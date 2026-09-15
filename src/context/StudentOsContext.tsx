@@ -41,6 +41,8 @@ interface StudentOsContextType {
   isAuthenticated: boolean;
   loginWithEntryCode: (user: 'Diwakar' | 'Ayush', code: string) => Promise<boolean>;
   logout: () => void;
+  isAyushPasswordSet: () => boolean;
+  setAyushPermanentPassword: (password: string) => Promise<boolean>;
 
   // Gemini & YouTube API Key Management
   geminiApiKey: string;
@@ -170,8 +172,8 @@ const DEFAULT_DIWAKAR_PROFILE: StudentProfile = {
   dsaGoalHours: 2.0,
   mlGoalHours: 2.0,
   todayStudiedMinutes: 0,
-  entryCode: 'FUSION-DIWAKAR-2026',
-  shortCode: 'D2026'
+  entryCode: 'ML1718',
+  shortCode: 'ML1718'
 };
 
 const DEFAULT_AYUSH_PROFILE: StudentProfile = {
@@ -188,8 +190,8 @@ const DEFAULT_AYUSH_PROFILE: StudentProfile = {
   dsaGoalHours: 2.0,
   mlGoalHours: 2.0,
   todayStudiedMinutes: 0,
-  entryCode: 'FUSION-AYUSH-2026',
-  shortCode: 'A2026'
+  entryCode: 'AYUSH',
+  shortCode: 'AYUSH'
 };
 
 const DEFAULT_COURSES: VideoCourse[] = [];
@@ -692,14 +694,38 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => clearInterval(interval);
   }, [currentUser, isTimerRunning, timerSubject, profile.todayStudiedMinutes]);
 
+  // Ayush Permanent Password Management
+  const isAyushPasswordSet = (): boolean => {
+    return Boolean(localStorage.getItem('fusion_ayush_password'));
+  };
+
+  const setAyushPermanentPassword = async (newPassword: string): Promise<boolean> => {
+    const clean = newPassword.trim();
+    if (!clean) return false;
+    localStorage.setItem('fusion_ayush_password', clean);
+    localStorage.setItem('fusion_ayush_password_created', 'true');
+    return true;
+  };
+
   // Auth Action
   const loginWithEntryCode = async (user: 'Diwakar' | 'Ayush', code: string): Promise<boolean> => {
-    const clean = code.trim().toUpperCase();
-    const validCodes = user === 'Diwakar'
-      ? ['D2026', 'FUSION-DIWAKAR-2026']
-      : ['A2026', 'FUSION-AYUSH-2026'];
+    const clean = code.trim();
+    let isValid = false;
 
-    if (validCodes.includes(clean)) {
+    if (user === 'Diwakar') {
+      // User Diwakar's password is ML1718 (case-insensitive)
+      isValid = clean.toUpperCase() === 'ML1718';
+    } else {
+      // User Ayush: checks permanent password created by Ayush
+      const storedAyushPassword = localStorage.getItem('fusion_ayush_password');
+      if (storedAyushPassword) {
+        isValid = clean === storedAyushPassword.trim();
+      } else {
+        isValid = false;
+      }
+    }
+
+    if (isValid) {
       setCurrentUser(user);
       setIsAuthenticated(true);
       localStorage.setItem('fusion_authenticated', 'true');
@@ -1741,6 +1767,8 @@ INSTRUCTIONS:
         isAuthenticated,
         loginWithEntryCode,
         logout,
+        isAyushPasswordSet,
+        setAyushPermanentPassword,
         geminiApiKey,
         setGeminiApiKey,
         youtubeApiKey,

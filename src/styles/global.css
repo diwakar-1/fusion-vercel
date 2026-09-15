@@ -522,3 +522,30 @@ html, body {
   }
 }
 
+/* Unlock Progress Bar and Glow Keyframes */
+@keyframes unlockProgressBar {
+  0% {
+    width: 0%;
+  }
+  30% {
+    width: 45%;
+  }
+  70% {
+    width: 82%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+@keyframes fusionPulseGlow {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 12px 36px rgba(34, 197, 94, 0.3), 0 0 20px rgba(34, 197, 94, 0.2) inset;
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 16px 48px rgba(34, 197, 94, 0.5), 0 0 30px rgba(34, 197, 94, 0.35) inset;
+  }
+}
+
