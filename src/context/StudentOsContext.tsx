@@ -1,0 +1,1842 @@
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import confetti from 'canvas-confetti';
+import { api } from '../services/api';
+import { GeminiService } from '../services/gemini';
+import { YouTubeService } from '../services/youtube';
+import {
+  StudentProfile,
+  FriendProfile,
+  TimetableClass,
+  TimetableScheduleSlot,
+  StudySession,
+  DsaSession,
+  DsaProblem,
+  DsaStatus,
+  VideoCourse,
+  PlaylistLecture,
+  PdfQuestionSheet,
+  PdfQuestionItem,
+  DailyTask,
+  MlMilestone,
+  Habit,
+  Goal,
+  HeatmapDay,
+  YouTubeRecommendation,
+  ChatMessage,
+  StudentNote
+} from '../types/studentOs';
+
+interface StudentOsContextType {
+  // Navigation & View
+  activeModule: string;
+  setActiveModule: (module: string) => void;
+  isAiChatOpen: boolean;
+  setIsAiChatOpen: (open: boolean) => void;
+  isProfileModalOpen: boolean;
+  setIsProfileModalOpen: (open: boolean) => void;
+
+  // Real-Time Multi-User Auth (Diwakar & Ayush)
+  isBackendConnected: boolean;
+  refreshBackendData: () => Promise<void>;
+  isAuthenticated: boolean;
+  loginWithEntryCode: (user: 'Diwakar' | 'Ayush', code: string) => Promise<boolean>;
+  logout: () => void;
+
+  // Gemini & YouTube API Key Management
+  geminiApiKey: string;
+  setGeminiApiKey: (key: string) => void;
+  youtubeApiKey: string;
+  setYoutubeApiKey: (key: string) => void;
+  isAiThinking: boolean;
+
+  // Task Punishment & Progress Deletion System
+  enforceTaskAccountability: (manual?: boolean) => Promise<{ punished: boolean; message: string; wiped: boolean }>;
+  dismissPunishmentAlert: () => void;
+  punishmentModalOpen: boolean;
+  setPunishmentModalOpen: (open: boolean) => void;
+  punishmentDetails: { reason: string; penaltyXp: number; isWiped: boolean; prevXp: number; newXp: number } | null;
+
+  // Profile & User
+  profile: StudentProfile;
+  updateProfile: (updates: Partial<StudentProfile>) => void;
+  updateProfileAvatar: (avatarUrl: string) => void;
+
+  // Partner Co-Study (Diwakar & Ayush)
+  activeFriend: FriendProfile;
+  setActiveFriend: (friend: FriendProfile) => void;
+  friendStudyStatus: string;
+  sendFriendNudge: (type: 'nudge' | 'coffee' | 'cheer') => void;
+  partnerChatMessages: Array<{ id: string; sender: string; text: string; timestamp: string }>;
+  sendPartnerChatMessage: (text: string) => void;
+
+  // Notes & Coding Question Sheets
+  notes: StudentNote[];
+  addNote: (note: { title: string; content: string; tags: string[]; pdfUrl?: string; fileName?: string; fileSize?: string }) => void;
+  deleteNote: (id: string) => void;
+  pdfQuestionSheets: PdfQuestionSheet[];
+  addPdfQuestionSheet: (sheet: Omit<PdfQuestionSheet, 'id' | 'totalCount' | 'completedCount'>) => void;
+  togglePdfQuestion: (sheetId: string, questionId: string, completed: boolean) => void;
+  generateCodingSheetByAi: (topic: string) => Promise<void>;
+  addQuestionFromScreenshot: (file: File, platform?: string, manualTitle?: string) => Promise<{ success: boolean; questionTitle: string }>;
+  isVacationPaused: boolean;
+  toggleVacationMode: () => { success: boolean; message: string; isProtected: boolean };
+  hasWatchedPlaylistVideoToday: boolean;
+  markPlaylistVideoWatchedToday: () => void;
+
+  // Focus Timer & Study Telemetry
+  timerSeconds: number;
+  timerDurationMinutes: number;
+  setTimerDurationMinutes: (minutes: number) => void;
+  isTimerRunning: boolean;
+  timerMode: 'focus' | 'short_break' | 'long_break';
+  timerSubject: string;
+  setTimerSubject: (subj: string) => void;
+  startTimer: () => void;
+  pauseTimer: () => void;
+  resetTimer: (mode?: 'focus' | 'short_break' | 'long_break') => void;
+  studySessions: StudySession[];
+  addStudySession: (session: Omit<StudySession, 'id' | 'timestamp'>) => void;
+
+  // Video Courses & YouTube Playlists (Image 1)
+  courses: VideoCourse[];
+  addCourse: (course: Omit<VideoCourse, 'id'>) => void;
+  deleteCourse: (id: string) => void;
+  currentWatchingVideo: { title: string; url: string; subject: string } | null;
+  setCurrentWatchingVideo: (video: { title: string; url: string; subject: string } | null) => void;
+  toggleLectureCompleted: (courseId: string, lectureId: string) => void;
+  activePlayingCourse: VideoCourse | null;
+  setActivePlayingCourse: (course: VideoCourse | null) => void;
+  activeLecture: PlaylistLecture | null;
+  setActiveLecture: (lecture: PlaylistLecture | null) => void;
+
+  // Timetable & AI Schedule
+  timetable: TimetableClass[];
+  collegeWorkingHours: string;
+  setCollegeWorkingHours: (hours: string) => void;
+  timetableImageUrl: string | null;
+  setTimetableImageUrl: (url: string | null) => void;
+  timetableSchedule: TimetableScheduleSlot[];
+  isTodayHoliday: boolean;
+  setIsTodayHoliday: (isHoliday: boolean) => void;
+  uploadTimetableImage: (file: File) => Promise<void>;
+  generateAiStudySchedule: (isHoliday?: boolean) => Promise<void>;
+
+  // DSA Tracker (Study Sessions Only)
+  dsaSessions: DsaSession[];
+  logDsaSession: (session: Omit<DsaSession, 'id' | 'timestamp'>) => void;
+  dsaProblems: DsaProblem[];
+  toggleDsaStatus: (problemId: string, newStatus: DsaStatus) => void;
+  addDsaProblem: (problem: Omit<DsaProblem, 'id'>) => void;
+
+  // Machine Learning Playlist & Phase Course Engine
+  mlMilestones: MlMilestone[];
+  toggleMlMilestone: (id: string) => void;
+
+  // Daily Habits & Quests (Streak counts if done)
+  dailyTasks: DailyTask[];
+  toggleDailyTask: (taskId: string, completed: boolean) => void;
+  addDailyTask: (task: Omit<DailyTask, 'id' | 'completed'>) => void;
+  isStreakProtectedToday: boolean;
+  habits: Habit[];
+  toggleHabit: (habitId: string) => void;
+  goals: Goal[];
+  updateGoalProgress: (goalId: string, progress: number) => void;
+
+  // Heatmap
+  heatmapData: HeatmapDay[];
+
+  // FUSE AI Chat (Gemini)
+  chatMessages: ChatMessage[];
+  sendChatMessage: (text: string) => Promise<void>;
+  clearChat: () => void;
+
+  // 30-Minute Streak & Task Notification System
+  reminderToast: { title: string; message: string; pendingTasksCount: number } | null;
+  dismissReminderToast: () => void;
+  triggerManualStreakReminder: () => void;
+}
+
+const DEFAULT_DIWAKAR_PROFILE: StudentProfile = {
+  id: 'u_diwakar',
+  name: 'Diwakar',
+  handle: '@diwakar_dev',
+  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+  streakDays: 0,
+  totalXp: 100,
+  level: 1,
+  strikes: 0,
+  isPunished: false,
+  dailyGoalHours: 4.0,
+  dsaGoalHours: 2.0,
+  mlGoalHours: 2.0,
+  todayStudiedMinutes: 0,
+  entryCode: 'FUSION-DIWAKAR-2026',
+  shortCode: 'D2026'
+};
+
+const DEFAULT_AYUSH_PROFILE: StudentProfile = {
+  id: 'u_ayush',
+  name: 'Ayush',
+  handle: '@ayush_ai',
+  avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150',
+  streakDays: 0,
+  totalXp: 100,
+  level: 1,
+  strikes: 0,
+  isPunished: false,
+  dailyGoalHours: 4.0,
+  dsaGoalHours: 2.0,
+  mlGoalHours: 2.0,
+  todayStudiedMinutes: 0,
+  entryCode: 'FUSION-AYUSH-2026',
+  shortCode: 'A2026'
+};
+
+const DEFAULT_COURSES: VideoCourse[] = [];
+
+const DEFAULT_TIMETABLE: TimetableClass[] = [
+  { id: '1', day: 'Wed', subject: 'Operating Systems', code: 'CS301', time: '09:00 - 10:00 AM', room: 'Hall 302', professor: 'Dr. Aris Vance' },
+  { id: '2', day: 'Wed', subject: 'Database Management', code: 'CS303', time: '10:15 - 11:15 AM', room: 'Lab 4', professor: 'Prof. Sarah Chen' },
+  { id: '3', day: 'Wed', subject: 'Machine Learning', code: 'CS305', time: '11:30 - 12:30 PM', room: 'Seminar A', professor: 'Dr. Marcus Brody' },
+  { id: '4', day: 'Thu', subject: 'Computer Networks', code: 'CS304', time: '10:15 - 11:15 AM', room: 'Lab 2', professor: 'Dr. Elena Rostova' },
+  { id: '5', day: 'Fri', subject: 'Software Engineering', code: 'CS306', time: '09:00 - 10:00 AM', room: 'Hall 201', professor: 'Prof. David Miller' }
+];
+
+const DEFAULT_STUDY_SESSIONS: StudySession[] = [];
+
+const DEFAULT_DSA_SESSIONS: DsaSession[] = [];
+
+const DEFAULT_PDF_SHEETS: PdfQuestionSheet[] = [
+  {
+    id: 'sheet_unified_master',
+    title: 'Master DSA & Coding Checklist (Verified Solutions)',
+    subject: 'DSA & Coding',
+    totalCount: 10,
+    completedCount: 4,
+    questions: [
+      { id: 'q1', title: 'Two Sum', platform: 'LeetCode', completed: true, completedBy: 'Diwakar' },
+      { id: 'q2', title: 'Best Time to Buy and Sell Stock', platform: 'LeetCode', completed: true, completedBy: 'Diwakar' },
+      { id: 'q3', title: 'Contains Duplicate', platform: 'LeetCode', completed: true, completedBy: 'Ayush' },
+      { id: 'q4', title: 'Product of Array Except Self', platform: 'LeetCode', completed: true, completedBy: 'Ayush' },
+      { id: 'q5', title: 'Maximum Subarray (Kadane\'s)', platform: 'LeetCode', completed: false },
+      { id: 'q6', title: '3Sum', platform: 'LeetCode', completed: false },
+      { id: 'q7', title: 'Container With Most Water', platform: 'LeetCode', completed: false },
+      { id: 'q8', title: 'Trapping Rain Water', platform: 'LeetCode', completed: false },
+      { id: 'q9', title: 'Reverse Linked List', platform: 'LeetCode', completed: false },
+      { id: 'q10', title: 'Merge Two Sorted Lists', platform: 'LeetCode', completed: false }
+    ]
+  }
+];
+
+const DEFAULT_DAILY_TASKS: DailyTask[] = [
+  { id: 'dt_1', title: 'Solve 2 Medium problems on LeetCode / Codeforces', platform: 'LeetCode', exp: 100, completed: true, isCoreStreakTask: true, completedBy: 'Diwakar' },
+  { id: 'dt_2', title: 'Complete 2 Hours DSA Deep Focus Session', platform: 'Focus Timer', exp: 100, completed: true, isCoreStreakTask: true, completedBy: 'Diwakar' },
+  { id: 'dt_3', title: 'Watch 1 Module from AIML YouTube Playlist (2 Hours)', platform: 'AIML Hub', exp: 100, completed: false, isCoreStreakTask: true },
+  { id: 'dt_4', title: 'Solve 1 Kata on CodeWars or HackerRank challenge', platform: 'CodeWars', exp: 60, completed: false, isCoreStreakTask: false }
+];
+
+const DEFAULT_DSA_PROBLEMS: DsaProblem[] = [
+  { id: 'd1', title: 'Two Sum & 3Sum Extensions', difficulty: 'Easy', topic: 'Arrays', platform: 'LeetCode', status: 'Solved', lastPracticed: '2026-09-10', nextRevisionDays: 7 },
+  { id: 'd2', title: 'Trapping Rain Water', difficulty: 'Hard', topic: 'Two Pointers', platform: 'LeetCode', status: 'Due for Revision', lastPracticed: '2026-09-02', nextRevisionDays: 0 },
+  { id: 'd3', title: 'Course Schedule (Topological Sort)', difficulty: 'Medium', topic: 'Graphs', platform: 'LeetCode', status: 'Solved', lastPracticed: '2026-09-12', nextRevisionDays: 5 }
+];
+
+const DEFAULT_ML_MILESTONES: MlMilestone[] = [
+  {
+    id: 'm1',
+    phase: 'Phase 1: Math & Foundations',
+    title: 'Linear Algebra & Backpropagation from Scratch',
+    description: 'Eigenvalues, vector calculus, computational graphs and building Micrograd.',
+    completed: true,
+    resources: [{ name: 'Andrej Karpathy Micrograd', url: 'https://www.youtube.com/watch?v=VMj-3S1tku0' }]
+  },
+  {
+    id: 'm2',
+    phase: 'Phase 2: Deep Language Modeling',
+    title: 'Autoregressive LM & MLP Makemore',
+    description: 'Character-level language modeling, loss functions and cross-entropy.',
+    completed: true,
+    resources: [{ name: 'Makemore Series', url: 'https://www.youtube.com/watch?v=PaCmpygFfXo' }]
+  },
+  {
+    id: 'm3',
+    phase: 'Phase 3: Transformer Architecture',
+    title: 'Self-Attention & Building GPT from Scratch',
+    description: 'Multi-Head Attention, residual connections, and positional encodings.',
+    completed: false,
+    resources: [{ name: 'Let\'s build GPT', url: 'https://www.youtube.com/watch?v=kCc8FmEb1nY' }]
+  }
+];
+
+const StudentOsContext = createContext<StudentOsContextType | undefined>(undefined);
+
+// Peer-to-peer Broadcast Channel for real-time Duo sync between Diwakar & Ayush
+const broadcastChannel = typeof window !== 'undefined' ? new BroadcastChannel('FUSION_DUO_SYNC') : null;
+
+export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Navigation
+  const [activeModule, setActiveModule] = useState<string>('dashboard');
+  const [isAiChatOpen, setIsAiChatOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('fusion_authenticated') === 'true';
+  });
+
+  const [currentUser, setCurrentUser] = useState<'Diwakar' | 'Ayush'>(() => {
+    return (localStorage.getItem('fusion_user') as 'Diwakar' | 'Ayush') || 'Diwakar';
+  });
+
+  const [profile, setProfile] = useState<StudentProfile>(() => {
+    const saved = localStorage.getItem(`fusion_profile_${currentUser.toLowerCase()}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          ...parsed,
+          streakDays: parsed.streakDays ?? 0,
+          totalXp: Math.max(100, parsed.totalXp ?? 100),
+          level: parsed.level ?? 1
+        };
+      } catch {}
+    }
+    return currentUser === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
+  });
+
+  const [activeFriend, setActiveFriend] = useState<FriendProfile>(() => {
+    const isDiwakar = currentUser === 'Diwakar';
+    return {
+      name: isDiwakar ? 'Ayush' : 'Diwakar',
+      handle: isDiwakar ? '@ayush_ai' : '@diwakar_dev',
+      avatar: isDiwakar
+        ? 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150'
+        : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+      streakDays: 0,
+      todayStudiedMinutes: 0,
+      totalXp: 100,
+      isOnline: true,
+      isFocusing: false,
+      focusSubject: 'DSA',
+      currentlyWatching: null // Null by default until active stream starts
+    };
+  });
+
+  // Gemini API Key Management
+  const [geminiApiKey, setGeminiApiKeyState] = useState<string>(() => {
+    return GeminiService.getApiKey(currentUser);
+  });
+
+  const setGeminiApiKey = (key: string) => {
+    setGeminiApiKeyState(key.trim());
+    GeminiService.setApiKey(currentUser, key.trim());
+  };
+
+  // YouTube API Key Management
+  const [youtubeApiKey, setYoutubeApiKeyState] = useState<string>(() => {
+    return YouTubeService.getApiKey(currentUser);
+  });
+
+  const setYoutubeApiKey = (key: string) => {
+    const clean = key.trim();
+    setYoutubeApiKeyState(clean);
+    YouTubeService.setApiKey(currentUser, clean);
+    api.setYoutubeKey(clean);
+  };
+
+  const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
+
+  // Punishment & Task Accountability State
+  const [punishmentModalOpen, setPunishmentModalOpen] = useState<boolean>(false);
+  const [punishmentDetails, setPunishmentDetails] = useState<{
+    reason: string;
+    penaltyXp: number;
+    isWiped: boolean;
+    prevXp: number;
+    newXp: number;
+  } | null>(null);
+
+  // Partner Chat Messages (Real-time synced)
+  const [partnerChatMessages, setPartnerChatMessages] = useState<Array<{ id: string; sender: string; text: string; timestamp: string }>>([]);
+
+  // Timetable State
+  const [timetable, setTimetable] = useState<TimetableClass[]>(() => {
+    const saved = localStorage.getItem('fusion_timetable');
+    return saved ? JSON.parse(saved) : DEFAULT_TIMETABLE;
+  });
+
+  const [collegeWorkingHours, setCollegeWorkingHours] = useState<string>(() => {
+    return localStorage.getItem('fusion_college_hours') || '09:00 AM - 04:00 PM';
+  });
+
+  const handleSetCollegeWorkingHours = (hours: string) => {
+    const trimmed = hours.trim();
+    setCollegeWorkingHours(trimmed);
+    localStorage.setItem('fusion_college_hours', trimmed);
+  };
+
+  const [timetableImageUrl, setTimetableImageUrl] = useState<string | null>(() => {
+    return localStorage.getItem('fusion_timetable_image');
+  });
+
+  const [isTodayHoliday, setIsTodayHoliday] = useState<boolean>(() => {
+    const todayDay = new Date().getDay();
+    // Monday is 1, Tuesday is 2
+    return todayDay === 1 || todayDay === 2;
+  });
+
+  const [timetableSchedule, setTimetableSchedule] = useState<TimetableScheduleSlot[]>([
+    { id: 'sch_0', time: '09:00 AM - 04:00 PM', subject: 'College Lectures', topic: 'College Working Hours & Academic Sessions', type: 'College Working Hours', completed: true },
+    { id: 'sch_1', time: '04:00 - 05:00 PM', subject: 'Break', topic: 'Commute & Evening Refreshment', type: 'Rest', completed: true },
+    { id: 'sch_2', time: '05:00 - 07:00 PM', subject: 'DSA', topic: 'Two Pointers & Sliding Window LeetCode Patterns (2h Target)', type: 'Problem Solving', completed: false },
+    { id: 'sch_3', time: '07:00 - 08:00 PM', subject: 'Break', topic: 'Dinner & Downtime Break', type: 'Rest', completed: false },
+    { id: 'sch_4', time: '08:00 - 10:00 PM', subject: 'Machine Learning', topic: 'Neural Networks Architecture & Backpropagation (2h Target)', type: 'Video Lecture', completed: false },
+    { id: 'sch_5', time: '10:00 - 10:30 PM', subject: 'Core CS', topic: 'Daily Revision & Code Commit Checklist', type: 'Revision', completed: false }
+  ]);
+
+  // Courses & Playlists (Fresh start, no dummy courses)
+  const [courses, setCourses] = useState<VideoCourse[]>(() => {
+    const saved = localStorage.getItem('fusion_courses');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter(
+            (c: any) =>
+              !['c_1', 'c_2', 'c_3'].includes(c.id) &&
+              !c.title?.toLowerCase().includes('striver') &&
+              !c.title?.toLowerCase().includes('karpathy')
+          );
+          return filtered;
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [activePlayingCourse, setActivePlayingCourse] = useState<VideoCourse | null>(() => courses[0] || null);
+  const [activeLecture, setActiveLecture] = useState<PlaylistLecture | null>(() => courses[0]?.lectures?.[0] || null);
+
+  const [currentWatchingVideo, setCurrentWatchingVideo] = useState<{ title: string; url: string; subject: string } | null>(null);
+
+  // Study Sessions
+  const [studySessions, setStudySessions] = useState<StudySession[]>(() => {
+    const saved = localStorage.getItem('fusion_study_sessions');
+    return saved ? JSON.parse(saved) : DEFAULT_STUDY_SESSIONS;
+  });
+
+  // DSA Sessions
+  const [dsaSessions, setDsaSessions] = useState<DsaSession[]>(() => {
+    const saved = localStorage.getItem('fusion_dsa_sessions');
+    return saved ? JSON.parse(saved) : DEFAULT_DSA_SESSIONS;
+  });
+
+  const [dsaProblems, setDsaProblems] = useState<DsaProblem[]>(() => {
+    const saved = localStorage.getItem('fusion_dsa_problems');
+    return saved ? JSON.parse(saved) : DEFAULT_DSA_PROBLEMS;
+  });
+
+  // PDF sheets (Unified into one single master checklist)
+  const [pdfQuestionSheets, setPdfQuestionSheets] = useState<PdfQuestionSheet[]>(() => {
+    const saved = localStorage.getItem('fusion_pdf_sheets');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const allQs: PdfQuestionItem[] = parsed.flatMap((s: any) => s.questions || []);
+          const seen = new Set<string>();
+          const deduped = allQs.filter(q => {
+            const key = (q.title || '').trim().toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          return [{
+            id: 'sheet_unified_master',
+            title: 'Master DSA & Coding Checklist (Verified Solutions)',
+            subject: 'DSA & Coding',
+            totalCount: deduped.length,
+            completedCount: deduped.filter((q: any) => q.completed).length,
+            questions: deduped
+          }];
+        }
+      } catch {}
+    }
+    return DEFAULT_PDF_SHEETS;
+  });
+
+  // Vacation / Freeze Pause Mode
+  const [isVacationPaused, setIsVacationPaused] = useState<boolean>(() => {
+    return localStorage.getItem('fusion_vacation_paused') === 'true';
+  });
+
+  // Daily tasks & Habits
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>(() => {
+    const saved = localStorage.getItem('fusion_daily_tasks');
+    return saved ? JSON.parse(saved) : DEFAULT_DAILY_TASKS;
+  });
+
+  const [habits, setHabits] = useState<Habit[]>([
+    { id: 'h1', title: 'Daily LeetCode 2 Problems', icon: 'Code', streak: 14, completedToday: true, weeklyHistory: [true, true, true, true, true, true, true] },
+    { id: 'h2', title: '2 Hours Machine Learning Deep Focus', icon: 'Brain', streak: 12, completedToday: false, weeklyHistory: [true, true, false, true, true, true, false] },
+    { id: 'h3', title: '2 Hours DSA Deep Practice Block', icon: 'Zap', streak: 14, completedToday: true, weeklyHistory: [true, true, true, true, true, true, true] },
+    { id: 'h4', title: 'Spaced Repetition Concept Review', icon: 'BookOpen', streak: 9, completedToday: false, weeklyHistory: [false, true, true, true, false, true, false] }
+  ]);
+
+  const [goals, setGoals] = useState<Goal[]>([
+    { id: 'g1', title: 'Master 150 Blind LeetCode Problems', category: 'DSA', targetDate: 'Nov 2026', progress: 68 },
+    { id: 'g2', title: 'Build GPT-2 from Scratch in PyTorch', category: 'Machine Learning', targetDate: 'Oct 2026', progress: 54 },
+    { id: 'g3', title: 'Complete Striver Graph & DP Series', category: 'DSA', targetDate: 'Dec 2026', progress: 75 }
+  ]);
+
+  const DEFAULT_INITIAL_NOTES: StudentNote[] = [];
+
+  const [notes, setNotes] = useState<StudentNote[]>(() => {
+    const saved = localStorage.getItem('fusion_notes');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (n: any) =>
+              n.id !== 'n1' &&
+              n.id !== 'n2' &&
+              !n.title?.toLowerCase().includes('kahn') &&
+              !n.title?.toLowerCase().includes('multi-head')
+          );
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [mlMilestones, setMlMilestones] = useState<MlMilestone[]>(DEFAULT_ML_MILESTONES);
+
+  // Focus Timer State
+  const [timerDurationMinutes, setTimerDurationMinutes] = useState<number>(25);
+  const [timerSeconds, setTimerSeconds] = useState<number>(25 * 60);
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  const [timerMode, setTimerMode] = useState<'focus' | 'short_break' | 'long_break'>('focus');
+  const [timerSubject, setTimerSubject] = useState<string>('DSA');
+
+  // Backend connection flag
+  const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
+
+  // Chat messages with FUSE
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: 'msg_welcome',
+      sender: 'assistant',
+      model: 'FUSE (Gemini)',
+      text: 'Hey Diwakar & Ayush! I am **FUSE**—your private AI study copilot powered by Google Gemini. I have complete access to your study schedules, YouTube playlists, DSA telemetry, and notes. How can I help you dominate today\'s session?',
+      timestamp: '09:00 AM'
+    }
+  ]);
+
+  // Streak verification (During vacation pause, user must watch at least 1 playlist video to protect streak)
+  const [userWatchedVideoToday, setUserWatchedVideoToday] = useState<boolean>(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return localStorage.getItem('fusion_watched_video_date') === today;
+  });
+
+  const markPlaylistVideoWatchedToday = useCallback(() => {
+    const today = new Date().toISOString().split('T')[0];
+    localStorage.setItem('fusion_watched_video_date', today);
+    setUserWatchedVideoToday(true);
+  }, []);
+
+  const hasWatchedPlaylistVideoToday = userWatchedVideoToday || studySessions.some(
+    s => s.duration_minutes >= 5 || s.notes?.toLowerCase().includes('lecture') || s.subject_name.toLowerCase().includes('video')
+  ) || profile.todayStudiedMinutes >= 10 || courses.some(c => c.lectures.some(l => l.completed));
+
+  const toggleVacationMode = useCallback((): { success: boolean; message: string; isProtected: boolean } => {
+    if (isVacationPaused) {
+      setIsVacationPaused(false);
+      localStorage.setItem('fusion_vacation_paused', 'false');
+      return {
+        success: true,
+        message: 'Vacation Pause ended! You are back in active study mode.',
+        isProtected: true
+      };
+    } else {
+      if (hasWatchedPlaylistVideoToday) {
+        setIsVacationPaused(true);
+        localStorage.setItem('fusion_vacation_paused', 'true');
+        return {
+          success: true,
+          message: 'Vacation Pause Activated! Video playlist requirement satisfied. Your streak is safely frozen and XP deduction is protected.',
+          isProtected: true
+        };
+      } else {
+        // User has NOT watched a video from the playlist today!
+        // "otherwise Streak will be broken"
+        setIsVacationPaused(true);
+        localStorage.setItem('fusion_vacation_paused', 'true');
+        setProfile(p => ({ ...p, streakDays: 0 }));
+        return {
+          success: true,
+          message: 'Vacation Pause Activated WITHOUT watching 1 playlist video! Your streak has been broken (reset to 0). Daily XP deduction is now frozen.',
+          isProtected: false
+        };
+      }
+    }
+  }, [isVacationPaused, hasWatchedPlaylistVideoToday]);
+
+  const isStreakProtectedToday = isVacationPaused
+    ? hasWatchedPlaylistVideoToday
+    : dailyTasks.some(t => t.isCoreStreakTask && t.completed);
+
+  // Heatmap generation from actual study sessions
+  const generateHeatmap = useCallback(() => {
+    const days: HeatmapDay[] = [];
+    const now = new Date();
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayMinutes = studySessions
+        .filter(s => s.timestamp.startsWith(dateStr) && (s.user_name?.toLowerCase() === currentUser.toLowerCase()))
+        .reduce((sum, s) => sum + s.duration_minutes, 0);
+
+      let intensity: 0 | 1 | 2 | 3 | 4 = 0;
+      if (dayMinutes >= 180) intensity = 4;
+      else if (dayMinutes >= 120) intensity = 3;
+      else if (dayMinutes >= 60) intensity = 2;
+      else if (dayMinutes > 0) intensity = 1;
+
+      days.push({ date: dateStr, count: dayMinutes, intensity });
+    }
+    return days;
+  }, [studySessions, currentUser]);
+
+  const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>(generateHeatmap);
+
+  useEffect(() => {
+    setHeatmapData(generateHeatmap());
+  }, [generateHeatmap]);
+
+  // Duo BroadcastChannel Receiver for Real-Time Sync
+  useEffect(() => {
+    if (!broadcastChannel) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      const { type, payload, sender } = event.data || {};
+      if (sender === currentUser) return; // ignore self
+
+      if (type === 'PARTNER_FOCUS_UPDATE') {
+        setActiveFriend(prev => ({
+          ...prev,
+          isFocusing: payload.isFocusing,
+          focusSubject: payload.focusSubject,
+          todayStudiedMinutes: payload.todayStudiedMinutes || prev.todayStudiedMinutes
+        }));
+      } else if (type === 'PARTNER_WATCHING_UPDATE') {
+        setActiveFriend(prev => ({
+          ...prev,
+          currentlyWatching: payload
+        }));
+      } else if (type === 'PARTNER_CHAT_MESSAGE') {
+        setPartnerChatMessages(prev => [...prev, payload]);
+      } else if (type === 'PARTNER_NUDGE') {
+        confetti({ particleCount: 70, spread: 80, origin: { y: 0.5 } });
+      } else if (type === 'PARTNER_TASK_TOGGLE') {
+        setDailyTasks(prev => prev.map(t => t.id === payload.taskId ? { ...t, completed: payload.completed, completedBy: payload.completedBy } : t));
+        if (payload.completed) {
+          setActiveFriend(prev => ({
+            ...prev,
+            totalXp: prev.totalXp + (payload.exp || 100)
+          }));
+        }
+      } else if (type === 'PARTNER_TASK_ADDED') {
+        setDailyTasks(prev => [payload, ...prev.filter(t => t.id !== payload.id)]);
+      } else if (type === 'PARTNER_QUESTION_SOLVED') {
+        if (payload.question) {
+          setPdfQuestionSheets(prev => {
+            const allExisting = prev.flatMap(s => s.questions);
+            const updatedQs = [payload.question, ...allExisting.filter(q => q.id !== payload.question.id)];
+            return [{
+              id: 'sheet_unified_master',
+              title: 'Master DSA & Coding Checklist (Verified Solutions)',
+              subject: 'DSA & Coding',
+              totalCount: updatedQs.length,
+              completedCount: updatedQs.filter(q => q.completed).length,
+              questions: updatedQs
+            }];
+          });
+          setActiveFriend(prev => ({
+            ...prev,
+            totalXp: prev.totalXp + (payload.xpGained || 35)
+          }));
+        }
+      }
+    };
+
+    broadcastChannel.addEventListener('message', handleMessage);
+    return () => broadcastChannel.removeEventListener('message', handleMessage);
+  }, [currentUser]);
+
+  // Periodic heartbeat broadcast
+  useEffect(() => {
+    if (!broadcastChannel) return;
+    const interval = setInterval(() => {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_FOCUS_UPDATE',
+        sender: currentUser,
+        payload: {
+          isFocusing: isTimerRunning,
+          focusSubject: timerSubject,
+          todayStudiedMinutes: profile.todayStudiedMinutes
+        }
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [currentUser, isTimerRunning, timerSubject, profile.todayStudiedMinutes]);
+
+  // Auth Action
+  const loginWithEntryCode = async (user: 'Diwakar' | 'Ayush', code: string): Promise<boolean> => {
+    const clean = code.trim().toUpperCase();
+    const validCodes = user === 'Diwakar'
+      ? ['D2026', 'FUSION-DIWAKAR-2026']
+      : ['A2026', 'FUSION-AYUSH-2026'];
+
+    if (validCodes.includes(clean)) {
+      setCurrentUser(user);
+      setIsAuthenticated(true);
+      localStorage.setItem('fusion_authenticated', 'true');
+      localStorage.setItem('fusion_user', user);
+
+      const targetProfile = user === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
+      setProfile(targetProfile);
+      setGeminiApiKeyState(GeminiService.getApiKey(user));
+      confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+      return true;
+    }
+    return false;
+  };
+
+  const logout = () => {
+    setIsAuthenticated(false);
+    localStorage.setItem('fusion_authenticated', 'false');
+    localStorage.removeItem('fusion_user');
+  };
+
+  const updateProfileAvatar = (avatarUrl: string) => {
+    setProfile(prev => ({ ...prev, avatar: avatarUrl }));
+    localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify({ ...profile, avatar: avatarUrl }));
+    api.updateProfileAvatar({ userName: currentUser, avatar: avatarUrl });
+  };
+
+  const updateProfile = (updates: Partial<StudentProfile>) => {
+    setProfile(prev => {
+      const next = { ...prev, ...updates };
+      localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Timer Tick
+  useEffect(() => {
+    let interval: any = null;
+    if (isTimerRunning && timerSeconds > 0) {
+      interval = setInterval(() => {
+        setTimerSeconds(s => s - 1);
+      }, 1000);
+    } else if (isTimerRunning && timerSeconds === 0) {
+      setIsTimerRunning(false);
+      const minutesSpent = timerDurationMinutes;
+      confetti({ particleCount: 80, spread: 80, origin: { y: 0.5 } });
+
+      // Automatically log study session
+      const newSession: StudySession = {
+        id: 's_' + Date.now(),
+        user_id: currentUser === 'Diwakar' ? 'u_diwakar' : 'u_ayush',
+        user_name: currentUser,
+        subject_name: timerSubject,
+        duration_minutes: minutesSpent,
+        timestamp: new Date().toISOString(),
+        notes: `Completed ${minutesSpent}m deep focus block on ${timerSubject}.`
+      };
+
+      setStudySessions(prev => [newSession, ...prev]);
+      setProfile(p => ({
+        ...p,
+        todayStudiedMinutes: p.todayStudiedMinutes + minutesSpent,
+        totalXp: p.totalXp + minutesSpent * 2
+      }));
+
+      api.createStudySession(newSession);
+
+      // Broadcast to partner
+      if (broadcastChannel) {
+        broadcastChannel.postMessage({
+          type: 'PARTNER_FOCUS_UPDATE',
+          sender: currentUser,
+          payload: {
+            isFocusing: false,
+            focusSubject: timerSubject,
+            todayStudiedMinutes: profile.todayStudiedMinutes + minutesSpent
+          }
+        });
+      }
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning, timerSeconds, timerDurationMinutes, timerSubject, currentUser, profile.todayStudiedMinutes]);
+
+  const startTimer = () => {
+    setIsTimerRunning(true);
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_FOCUS_UPDATE',
+        sender: currentUser,
+        payload: {
+          isFocusing: true,
+          focusSubject: timerSubject,
+          todayStudiedMinutes: profile.todayStudiedMinutes
+        }
+      });
+    }
+  };
+
+  const pauseTimer = () => {
+    setIsTimerRunning(false);
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_FOCUS_UPDATE',
+        sender: currentUser,
+        payload: {
+          isFocusing: false,
+          focusSubject: timerSubject,
+          todayStudiedMinutes: profile.todayStudiedMinutes
+        }
+      });
+    }
+  };
+
+  const resetTimer = (mode: 'focus' | 'short_break' | 'long_break' = 'focus') => {
+    setIsTimerRunning(false);
+    setTimerMode(mode);
+    const mins = mode === 'focus' ? timerDurationMinutes : mode === 'short_break' ? 5 : 15;
+    setTimerSeconds(mins * 60);
+  };
+
+  // Study Sessions
+  const addStudySession = (session: Omit<StudySession, 'id' | 'timestamp'>) => {
+    const newSession: StudySession = {
+      ...session,
+      id: 's_' + Date.now(),
+      timestamp: new Date().toISOString()
+    };
+    setStudySessions(prev => [newSession, ...prev]);
+    setProfile(p => ({
+      ...p,
+      todayStudiedMinutes: p.todayStudiedMinutes + session.duration_minutes,
+      totalXp: p.totalXp + session.duration_minutes * 2
+    }));
+    api.createStudySession(newSession);
+  };
+
+  // DSA Session Logging (Pure telemetry)
+  const logDsaSession = (session: Omit<DsaSession, 'id' | 'timestamp'>) => {
+    const newSession: DsaSession = {
+      ...session,
+      id: 'ds_' + Date.now(),
+      timestamp: new Date().toISOString()
+    };
+    setDsaSessions(prev => [newSession, ...prev]);
+    setProfile(p => ({
+      ...p,
+      todayStudiedMinutes: p.todayStudiedMinutes + session.durationMinutes,
+      totalXp: p.totalXp + session.problemsCount * 30
+    }));
+    confetti({ particleCount: 50, spread: 60 });
+    api.createDsaSession(session);
+  };
+
+  const toggleDsaStatus = (problemId: string, newStatus: DsaStatus) => {
+    setDsaProblems(prev =>
+      prev.map(p => {
+        if (p.id === problemId) {
+          if (newStatus === 'Solved' && p.status !== 'Solved') {
+            confetti({ particleCount: 40, spread: 50 });
+            setProfile(pr => ({ ...pr, totalXp: pr.totalXp + 50 }));
+          }
+          return { ...p, status: newStatus };
+        }
+        return p;
+      })
+    );
+  };
+
+  const addDsaProblem = (prob: Omit<DsaProblem, 'id'>) => {
+    const newProblem: DsaProblem = { ...prob, id: 'd_' + Date.now() };
+    setDsaProblems(prev => [newProblem, ...prev]);
+  };
+
+  // Lecture & Course Playlist actions
+  const toggleLectureCompleted = (courseId: string, lectureId: string) => {
+    setCourses(prev => {
+      const updated = prev.map(c => {
+        if (c.id === courseId && c.lectures) {
+          const updatedLectures = c.lectures.map(lec => {
+            if (lec.id === lectureId) {
+              const nextState = !lec.completed;
+              if (nextState) {
+                confetti({ particleCount: 45, spread: 60 });
+                setProfile(p => ({ ...p, totalXp: p.totalXp + 50 }));
+                markPlaylistVideoWatchedToday();
+              }
+              return { ...lec, completed: nextState };
+            }
+            return lec;
+          });
+          const completedCount = updatedLectures.filter(l => l.completed).length;
+          return {
+            ...c,
+            lectures: updatedLectures,
+            currentLesson: `Completed ${completedCount}/${updatedLectures.length} Lectures`
+          };
+        }
+        return c;
+      });
+      localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const addCourse = (course: Omit<VideoCourse, 'id'>) => {
+    const newCourse: VideoCourse = {
+      ...course,
+      id: 'c_' + Date.now(),
+      lectures: course.lectures && course.lectures.length > 0 ? course.lectures : [
+        { id: 'lec_' + Date.now(), title: course.title, duration: '45:00', videoId: 'yRpLlJmRo2w', completed: false }
+      ]
+    };
+    setCourses(prev => {
+      const updated = [newCourse, ...prev.filter(c => c.id !== newCourse.id)];
+      localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      return updated;
+    });
+    api.createCourse(newCourse).catch(e => console.warn('api createCourse error', e));
+  };
+
+  const deleteCourse = (id: string) => {
+    setCourses(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      return updated;
+    });
+    api.deleteCourse(id).catch(e => console.warn('api deleteCourse error', e));
+  };
+
+  // Timetable Image Upload & AI Schedule Generation
+  const uploadTimetableImage = async (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      setTimetableImageUrl(dataUrl);
+      localStorage.setItem('fusion_timetable_image', dataUrl);
+
+      // Extract base64 without prefix for Gemini Vision
+      const base64Data = dataUrl.split(',')[1];
+      const mimeType = file.type || 'image/jpeg';
+
+      setIsAiThinking(true);
+      try {
+        const result = await GeminiService.analyzeTimetable(
+          geminiApiKey,
+          base64Data,
+          mimeType,
+          isTodayHoliday,
+          collegeWorkingHours
+        );
+        if (result.collegeHours) {
+          handleSetCollegeWorkingHours(result.collegeHours);
+        }
+        if (result.slots && result.slots.length > 0) {
+          setTimetableSchedule(
+            result.slots.map((s, i) => ({
+              id: 'slot_' + i + '_' + Date.now(),
+              time: s.time,
+              subject: s.subject as any,
+              topic: s.topic,
+              type: s.type as any,
+              completed: false,
+              isHolidaySlot: isTodayHoliday
+            }))
+          );
+          confetti({ particleCount: 50, spread: 60 });
+        }
+      } catch (err) {
+        console.error('[Timetable AI Error]', err);
+      } finally {
+        setIsAiThinking(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const generateAiStudySchedule = async (isHoliday: boolean = isTodayHoliday) => {
+    setIsAiThinking(true);
+    try {
+      const fallbackBase64 = timetableImageUrl?.includes(',') ? timetableImageUrl.split(',')[1] : '';
+      const result = await GeminiService.analyzeTimetable(
+        geminiApiKey,
+        fallbackBase64,
+        'image/jpeg',
+        isHoliday,
+        collegeWorkingHours
+      );
+      if (result.collegeHours) {
+        handleSetCollegeWorkingHours(result.collegeHours);
+      }
+      if (result.slots && result.slots.length > 0) {
+        setTimetableSchedule(
+          result.slots.map((s, i) => ({
+            id: 'slot_' + i + '_' + Date.now(),
+            time: s.time,
+            subject: s.subject as any,
+            topic: s.topic,
+            type: s.type as any,
+            completed: false,
+            isHolidaySlot: isHoliday
+          }))
+        );
+        confetti({ particleCount: 55, spread: 65 });
+      }
+    } catch (e) {
+      console.error('[AI Schedule Gen Error]', e);
+    } finally {
+      setIsAiThinking(false);
+    }
+  };
+
+  // Notes
+  const addNote = (note: { title: string; content: string; tags: string[]; pdfUrl?: string; fileName?: string; fileSize?: string }) => {
+    const newNote: StudentNote = {
+      ...note,
+      id: 'n_' + Date.now(),
+      createdAt: 'Just now'
+    };
+    setNotes(prev => {
+      const updated = [newNote, ...prev.filter(n => n.id !== newNote.id)];
+      try {
+        localStorage.setItem('fusion_notes', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('[Note Storage Quota Warning]', e);
+      }
+      return updated;
+    });
+    api.createNote(newNote).catch(e => console.warn('api createNote error', e));
+  };
+
+  const deleteNote = (id: string) => {
+    setNotes(prev => {
+      const updated = prev.filter(n => n.id !== id);
+      try {
+        localStorage.setItem('fusion_notes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    api.deleteNote(id);
+  };
+
+  // PDF Question Sheets & AI Generation (Always unified into one master checklist)
+  const addPdfQuestionSheet = (sheet: Omit<PdfQuestionSheet, 'id' | 'totalCount' | 'completedCount'>) => {
+    setPdfQuestionSheets(prev => {
+      const allExistingQuestions = prev.flatMap(s => s.questions);
+      const combined = [...sheet.questions, ...allExistingQuestions];
+      const singleSheet: PdfQuestionSheet = {
+        id: 'sheet_unified_master',
+        title: 'Master DSA & Coding Checklist (Verified Solutions)',
+        subject: 'DSA & Coding',
+        totalCount: combined.length,
+        completedCount: combined.filter(q => q.completed).length,
+        questions: combined
+      };
+      const updated = [singleSheet];
+      try {
+        localStorage.setItem('fusion_pdf_sheets', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    api.createPdfQuestionSheet(sheet);
+  };
+
+  const togglePdfQuestion = (sheetId: string, questionId: string, completed: boolean) => {
+    setPdfQuestionSheets(prev => {
+      const updated = prev.map(s => {
+        const updatedQs = s.questions.map(q => (q.id === questionId ? { ...q, completed, completedBy: completed ? currentUser : undefined } : q));
+        if (completed) {
+          confetti({ particleCount: 35, spread: 50 });
+          setProfile(p => ({ ...p, totalXp: p.totalXp + 25 }));
+        }
+        return { ...s, questions: updatedQs, completedCount: updatedQs.filter(q => q.completed).length };
+      });
+      try {
+        localStorage.setItem('fusion_pdf_sheets', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const generateCodingSheetByAi = async (topic: string) => {
+    setIsAiThinking(true);
+    try {
+      const generated = await GeminiService.generateCodingQuestions(geminiApiKey, topic);
+      setPdfQuestionSheets(prev => {
+        const allExistingQuestions = prev.flatMap(s => s.questions);
+        const newQs: PdfQuestionItem[] = generated.map((q, i) => ({
+          id: `q_gen_${i}_${Date.now()}`,
+          title: q.title,
+          platform: q.platform || 'LeetCode',
+          completed: false
+        }));
+        const combined = [...newQs, ...allExistingQuestions];
+        const singleSheet: PdfQuestionSheet = {
+          id: 'sheet_unified_master',
+          title: 'Master DSA & Coding Checklist (Verified Solutions)',
+          subject: 'DSA & Coding',
+          totalCount: combined.length,
+          completedCount: combined.filter(q => q.completed).length,
+          questions: combined
+        };
+        const updated = [singleSheet];
+        try {
+          localStorage.setItem('fusion_pdf_sheets', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+      confetti({ particleCount: 60, spread: 70 });
+    } catch (err) {
+      console.error('[AI Coding Sheet Error]', err);
+    } finally {
+      setIsAiThinking(false);
+    }
+  };
+
+  const addQuestionFromScreenshot = async (
+    file: File,
+    platform?: string,
+    manualTitle?: string
+  ): Promise<{ success: boolean; questionTitle: string }> => {
+    setIsAiThinking(true);
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const dataUrl = reader.result as string;
+          const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+          const mimeType = file.type || 'image/png';
+
+          // 1. Run Gemini AI Vision Analysis on raw image
+          const analysis = await GeminiService.analyzeQuestionScreenshot(
+            geminiApiKey,
+            base64Data,
+            mimeType,
+            manualTitle
+          );
+
+          // 2. Compress screenshot to canvas (max 800px) so it never causes QuotaExceededError or white screen
+          const compressImage = (dataUrlStr: string): Promise<string> => {
+            return new Promise((res) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const maxDim = 800;
+                if (width > maxDim || height > maxDim) {
+                  if (width > height) {
+                    height = Math.round((height * maxDim) / width);
+                    width = maxDim;
+                  } else {
+                    width = Math.round((width * maxDim) / height);
+                    height = maxDim;
+                  }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0, width, height);
+                  res(canvas.toDataURL('image/jpeg', 0.65));
+                } else {
+                  res(dataUrlStr);
+                }
+              };
+              img.onerror = () => res(dataUrlStr);
+              img.src = dataUrlStr;
+            });
+          };
+
+          const compressedScreenshot = await compressImage(dataUrl);
+
+          const finalTitle = analysis.title || manualTitle || 'Solved Problem';
+          const newQuestion: PdfQuestionItem = {
+            id: 'q_sc_' + Date.now(),
+            title: finalTitle,
+            platform: platform || analysis.platform || 'LeetCode',
+            topic: analysis.topic || 'Algorithms',
+            difficulty: analysis.difficulty || 'Medium',
+            screenshotUrl: compressedScreenshot,
+            completed: true,
+            completedBy: currentUser
+          };
+
+          setPdfQuestionSheets(prev => {
+            const allExistingQuestions = prev.flatMap(s => s.questions);
+            const updatedQuestions = [newQuestion, ...allExistingQuestions.filter(q => q.id !== newQuestion.id)];
+            const singleSheet: PdfQuestionSheet = {
+              id: 'sheet_unified_master',
+              title: 'Master DSA & Coding Checklist (Verified Solutions)',
+              subject: 'DSA & Coding',
+              totalCount: updatedQuestions.length,
+              completedCount: updatedQuestions.filter(q => q.completed).length,
+              questions: updatedQuestions
+            };
+            const updatedSheets = [singleSheet];
+
+            try {
+              localStorage.setItem('fusion_pdf_sheets', JSON.stringify(updatedSheets));
+            } catch (storageErr) {
+              console.warn('[LocalStorage Quota Warning on sheets]', storageErr);
+              try {
+                const lightweight = updatedSheets.map(s => ({
+                  ...s,
+                  questions: s.questions.map(q => ({ ...q, screenshotUrl: undefined }))
+                }));
+                localStorage.setItem('fusion_pdf_sheets', JSON.stringify(lightweight));
+              } catch {}
+            }
+
+            return updatedSheets;
+          });
+
+          // Award XP and celebration
+          confetti({ particleCount: 65, spread: 70 });
+          setProfile(p => ({ ...p, totalXp: p.totalXp + 35 }));
+
+          // Add to study sessions telemetry
+          const solvedSession: StudySession = {
+            id: 's_prob_' + Date.now(),
+            user_id: currentUser === 'Diwakar' ? 'u_diwakar' : 'u_ayush',
+            user_name: currentUser,
+            subject_name: 'DSA',
+            duration_minutes: 20,
+            timestamp: new Date().toISOString(),
+            notes: `Solved "${finalTitle}" on ${platform || analysis.platform || 'LeetCode'} (by ${currentUser}). Screenshot verified.`
+          };
+          setStudySessions(prev => [solvedSession, ...prev]);
+
+          if (broadcastChannel) {
+            broadcastChannel.postMessage({
+              type: 'PARTNER_QUESTION_SOLVED',
+              sender: currentUser,
+              payload: { question: newQuestion, xpGained: 35 }
+            });
+          }
+
+          resolve({ success: true, questionTitle: finalTitle });
+        } catch (e) {
+          console.error('[Screenshot Analysis Error]', e);
+          resolve({ success: false, questionTitle: manualTitle || 'Problem' });
+        } finally {
+          setIsAiThinking(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // ML Milestones
+  const toggleMlMilestone = (id: string) => {
+    setMlMilestones(prev =>
+      prev.map(m => {
+        if (m.id === id) {
+          const next = !m.completed;
+          if (next) {
+            confetti({ particleCount: 60, spread: 70 });
+            setProfile(p => ({ ...p, totalXp: p.totalXp + 100 }));
+          }
+          return { ...m, completed: next };
+        }
+        return m;
+      })
+    );
+  };
+
+  // Daily Tasks
+  const toggleDailyTask = (taskId: string, completed: boolean) => {
+    setDailyTasks(prev => {
+      const updated = prev.map(t => {
+        if (t.id === taskId) {
+          if (completed && !t.completed) {
+            confetti({ particleCount: 45, spread: 60 });
+            setProfile(p => ({ ...p, totalXp: p.totalXp + t.exp }));
+          }
+          return { ...t, completed, completedBy: completed ? currentUser : undefined };
+        }
+        return t;
+      });
+      try {
+        localStorage.setItem('fusion_daily_tasks', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    api.toggleDailyTask(taskId, completed);
+
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_TASK_TOGGLE',
+        sender: currentUser,
+        payload: { taskId, completed, completedBy: completed ? currentUser : undefined }
+      });
+    }
+  };
+
+  const addDailyTask = (task: Omit<DailyTask, 'id' | 'completed'>) => {
+    const newTask: DailyTask = {
+      ...task,
+      id: 'dt_' + Date.now(),
+      completed: false,
+      isCustom: task.isCustom ?? true,
+      createdBy: currentUser
+    };
+    setDailyTasks(prev => {
+      const updated = [newTask, ...prev];
+      try {
+        localStorage.setItem('fusion_daily_tasks', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    api.createDailyTask(newTask).catch((e: any) => console.warn('api createDailyTask error', e));
+
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_TASK_ADDED',
+        sender: currentUser,
+        payload: newTask
+      });
+    }
+  };
+
+  // Habits
+  const toggleHabit = (habitId: string) => {
+    setHabits(prev =>
+      prev.map(h => {
+        if (h.id === habitId) {
+          const done = !h.completedToday;
+          const streak = done ? h.streak + 1 : Math.max(0, h.streak - 1);
+          if (done) {
+            confetti({ particleCount: 40, spread: 50 });
+            setProfile(p => ({ ...p, totalXp: p.totalXp + 25 }));
+          }
+          return { ...h, completedToday: done, streak };
+        }
+        return h;
+      })
+    );
+  };
+
+  const updateGoalProgress = (goalId: string, progress: number) => {
+    setGoals(prev =>
+      prev.map(g => (g.id === goalId ? { ...g, progress: Math.min(100, Math.max(0, progress)) } : g))
+    );
+  };
+
+  // Partner Live Chat
+  const sendPartnerChatMessage = (text: string) => {
+    if (!text.trim()) return;
+    const msg = {
+      id: 'pc_' + Date.now(),
+      sender: currentUser,
+      text: text.trim(),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setPartnerChatMessages(prev => [...prev, msg]);
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_CHAT_MESSAGE',
+        sender: currentUser,
+        payload: msg
+      });
+    }
+  };
+
+  const sendFriendNudge = (type: 'nudge' | 'coffee' | 'cheer') => {
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_NUDGE',
+        sender: currentUser,
+        payload: { type }
+      });
+    }
+  };
+
+  // FUSE AI Chat Handler (Direct Google Gemini)
+  const sendChatMessage = async (text: string) => {
+    if (!text.trim() || isAiThinking) return;
+
+    const userMsg: ChatMessage = {
+      id: 'msg_' + Date.now(),
+      sender: 'user',
+      model: 'User',
+      text: text.trim(),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setChatMessages(prev => [...prev, userMsg]);
+    setIsAiThinking(true);
+
+    const systemPrompt = `You are FUSE, the supreme AI Engineering & Algorithm Mentor built exclusively for FUSION—the private co-study ecosystem of Diwakar and Ayush.
+
+STUDENT TELEMETRY:
+- Active Student: ${currentUser} (${profile.streakDays}-day streak, ${profile.totalXp} XP, Level ${profile.level})
+- Target Daily Goal: 4 Hours (2 Hours DSA + 2 Hours Machine Learning)
+- Studied Today: ${profile.todayStudiedMinutes} minutes (${(profile.todayStudiedMinutes / 60).toFixed(1)} hrs)
+- Partner: ${activeFriend.name} (${activeFriend.streakDays}-day streak)
+- Currently Watching Video: "${currentWatchingVideo?.title || 'None'}" (${currentWatchingVideo?.subject || 'DSA'})
+- Timetable Holiday Today: ${isTodayHoliday ? 'YES (Intensive Full-Day Study Mode)' : 'No (Classes Active)'}
+- Mon & Tue are designated holidays.
+
+INSTRUCTIONS:
+1. Provide concise, mathematically and conceptually rigorous answers.
+2. For DSA / LeetCode / Algorithms: ALWAYS specify Time and Space Complexity upfront, then offer intuition, pattern recognition, and clean commented code.
+3. Be deeply aware of both Diwakar and Ayush's study progress and support their engineering mastery.`;
+
+    try {
+      const history = chatMessages.slice(-8).map(m => ({
+        role: m.sender as 'user' | 'assistant',
+        text: m.text
+      }));
+
+      const reply = await GeminiService.chatWithFuse(
+        geminiApiKey,
+        history,
+        text.trim(),
+        systemPrompt
+      );
+
+      const aiMsg: ChatMessage = {
+        id: 'msg_' + (Date.now() + 1),
+        sender: 'assistant',
+        model: 'FUSE (Gemini)',
+        text: reply,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, aiMsg]);
+    } catch (err: any) {
+      console.error('[FUSE Chat Error]', err);
+      const aiMsg: ChatMessage = {
+        id: 'msg_' + (Date.now() + 1),
+        sender: 'assistant',
+        model: 'FUSE',
+        text: `**FUSE AI Notice**: ${err.message}\n\n*To activate your dedicated Gemini model, click the API Key button in the top right of this chat and paste your Google Gemini API Key from Google AI Studio.*`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChatMessages(prev => [...prev, aiMsg]);
+    } finally {
+      setIsAiThinking(false);
+    }
+  };
+
+  const clearChat = () => setChatMessages([]);
+
+  // Task Punishment & Catastrophic Progress Deletion Logic
+  const enforceTaskAccountability = async (manual: boolean = false): Promise<{ punished: boolean; message: string; wiped: boolean }> => {
+    if (isVacationPaused) {
+      return {
+        punished: false,
+        message: 'Vacation Pause is currently ACTIVE. Daily XP deduction and penalties are completely frozen while on vacation!',
+        wiped: false
+      };
+    }
+    const uncompletedCore = dailyTasks.filter(t => t.isCoreStreakTask && !t.completed);
+    if (uncompletedCore.length === 0) {
+      return { punished: false, message: 'All core study tasks completed! No punishment incurred.', wiped: false };
+    }
+
+    const penalty = uncompletedCore.length * 400; // Massive XP penalty
+    const currentXp = profile.totalXp;
+    const newXpCalc = currentXp - penalty;
+
+    if (newXpCalc < 100) {
+      // CATASTROPHIC PROGRESS DELETION
+      const updatedProfile: StudentProfile = {
+        ...profile,
+        totalXp: 0,
+        streakDays: 0,
+        level: 1,
+        todayStudiedMinutes: 0,
+        strikes: (profile.strikes || 0) + 1,
+        isPunished: true,
+        punishmentReason: `${uncompletedCore.length} core study tasks failed. XP dropped below 100 threshold. Progress completely wiped.`
+      };
+      setProfile(updatedProfile);
+      localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updatedProfile));
+      setPunishmentDetails({
+        reason: `${uncompletedCore.length} core daily tasks were left uncompleted. Because your XP fell below the 100 threshold, your entire progress, streak, level, and XP have been wiped to 0.`,
+        penaltyXp: penalty,
+        isWiped: true,
+        prevXp: currentXp,
+        newXp: 0
+      });
+      setPunishmentModalOpen(true);
+      await api.punishResetUser({
+        userName: currentUser,
+        isCatastrophicReset: true,
+        penaltyXp: penalty,
+        reason: 'Failed daily tasks and XP fell below 100'
+      });
+      return { punished: true, message: 'Catastrophic reset triggered! All user progress was erased.', wiped: true };
+    } else {
+      // MASSIVE XP REDUCTION
+      const updatedProfile: StudentProfile = {
+        ...profile,
+        totalXp: newXpCalc,
+        strikes: (profile.strikes || 0) + 1,
+        isPunished: true,
+        punishmentReason: `Penalized -${penalty} XP for ${uncompletedCore.length} uncompleted tasks.`
+      };
+      setProfile(updatedProfile);
+      localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updatedProfile));
+      setPunishmentDetails({
+        reason: `${uncompletedCore.length} core daily tasks were left incomplete. A massive penalty of -${penalty} XP has been deducted from your profile.`,
+        penaltyXp: penalty,
+        isWiped: false,
+        prevXp: currentXp,
+        newXp: newXpCalc
+      });
+      setPunishmentModalOpen(true);
+      await api.punishResetUser({
+        userName: currentUser,
+        isCatastrophicReset: false,
+        penaltyXp: penalty,
+        reason: `Penalized -${penalty} XP for incomplete tasks`
+      });
+      return { punished: true, message: `Huge penalty applied: -${penalty} XP deducted for incomplete tasks.`, wiped: false };
+    }
+  };
+
+  const dismissPunishmentAlert = () => {
+    setPunishmentModalOpen(false);
+  };
+
+  // Full Real-Time Database Sync
+  const refreshBackendData = useCallback(async () => {
+    try {
+      const res = await api.getSyncData();
+      if (res.data && res.data.success) {
+        setIsBackendConnected(true);
+        if (Array.isArray(res.data.studySessions)) {
+          setStudySessions(res.data.studySessions);
+          localStorage.setItem('fusion_study_sessions', JSON.stringify(res.data.studySessions));
+        }
+        if (Array.isArray(res.data.dsaSessions)) {
+          setDsaSessions(res.data.dsaSessions);
+          localStorage.setItem('fusion_dsa_sessions', JSON.stringify(res.data.dsaSessions));
+        }
+        if (Array.isArray(res.data.partnerChat)) {
+          setPartnerChatMessages(res.data.partnerChat);
+        }
+        const payload = res.data;
+        if (Array.isArray(payload.courses) && payload.courses.length > 0) {
+          setCourses(prev => {
+            const merged = [...prev];
+            payload.courses.forEach((bc: any) => {
+              const existingIdx = merged.findIndex(c => c.id === bc.id);
+              if (existingIdx >= 0) {
+                if (Array.isArray(bc.lectures) && bc.lectures.length > 0) {
+                  merged[existingIdx] = bc;
+                }
+              } else {
+                merged.push(bc);
+              }
+            });
+            localStorage.setItem('fusion_courses', JSON.stringify(merged));
+            return merged;
+          });
+        }
+        if (Array.isArray(payload.notes) && payload.notes.length > 0) {
+          setNotes(prev => {
+            const merged = [...prev];
+            payload.notes.forEach((bn: any) => {
+              const existingIdx = merged.findIndex(n => n.id === bn.id);
+              if (existingIdx >= 0) {
+                const existing = merged[existingIdx];
+                merged[existingIdx] = {
+                  ...bn,
+                  tags: Array.isArray(bn.tags) && bn.tags.length > 0 ? bn.tags : (existing.tags || ['General']),
+                  pdfUrl: bn.pdfUrl || existing.pdfUrl,
+                  fileName: bn.fileName || existing.fileName,
+                  fileSize: bn.fileSize || existing.fileSize
+                };
+              } else {
+                merged.push({
+                  ...bn,
+                  tags: Array.isArray(bn.tags) && bn.tags.length > 0 ? bn.tags : ['General']
+                });
+              }
+            });
+            try {
+              localStorage.setItem('fusion_notes', JSON.stringify(merged));
+            } catch (storageErr) {
+              console.warn('[Storage Quota] Could not persist all notes into localStorage:', storageErr);
+            }
+            return merged;
+          });
+        }
+        if (Array.isArray(res.data.dailyTasks) && res.data.dailyTasks.length > 0) {
+          setDailyTasks(res.data.dailyTasks);
+        }
+        if (Array.isArray(res.data.users)) {
+          const dbCurrentUser = res.data.users.find((u: any) => u.full_name?.toLowerCase() === currentUser.toLowerCase());
+          if (dbCurrentUser) {
+            setProfile(prev => ({
+              ...prev,
+              streakDays: dbCurrentUser.streak ?? 0,
+              totalXp: Math.max(100, dbCurrentUser.xp ?? 100),
+              level: dbCurrentUser.level ?? 1,
+              strikes: dbCurrentUser.strikes ?? prev.strikes,
+              isPunished: dbCurrentUser.isPunished ?? prev.isPunished
+            }));
+          }
+          const dbPartner = res.data.users.find((u: any) => u.full_name?.toLowerCase() !== currentUser.toLowerCase());
+          if (dbPartner) {
+            setActiveFriend(prev => ({
+              ...prev,
+              streakDays: dbPartner.streak ?? 0,
+              totalXp: Math.max(100, dbPartner.xp ?? 100),
+              currentlyWatching: dbPartner.currentlyWatching ?? null
+            }));
+          }
+        }
+      } else {
+        const healthy = await api.checkHealth();
+        setIsBackendConnected(healthy);
+      }
+    } catch {
+      setIsBackendConnected(false);
+    }
+  }, [currentUser]);
+
+  const handleSetCurrentWatchingVideo = (video: { title: string; url: string; subject: string } | null) => {
+    setCurrentWatchingVideo(video);
+    api.updateWatching(currentUser, video).catch((e: any) => console.warn('api updateWatching error', e));
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_WATCHING_UPDATE',
+        sender: currentUser,
+        payload: video
+      });
+    }
+  };
+
+  // Initial & Continuous Real-time Heartbeat Polling (every 4s)
+  useEffect(() => {
+    refreshBackendData();
+    const interval = setInterval(refreshBackendData, 4000);
+    return () => clearInterval(interval);
+  }, [refreshBackendData]);
+
+  // 30-Minute Streak & Task Notification System
+  const [reminderToast, setReminderToast] = useState<{ title: string; message: string; pendingTasksCount: number } | null>(null);
+
+  const dismissReminderToast = useCallback(() => {
+    setReminderToast(null);
+  }, []);
+
+  const playNotificationChime = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.14); // A5
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.45);
+    } catch {}
+  }, []);
+
+  const triggerManualStreakReminder = useCallback(() => {
+    const pendingTasks = dailyTasks.filter(t => !t.completed);
+    const pendingCount = pendingTasks.length;
+    const coreTasksPending = dailyTasks.filter(t => t.isCoreStreakTask && !t.completed).length;
+
+    let title = '🔥 Streak & Task Reminder';
+    let message = '';
+
+    if (coreTasksPending > 0) {
+      message = `You have ${coreTasksPending} core coding challenge(s) remaining today! Complete them to protect your ${profile.streakDays}-day streak.`;
+    } else if (pendingCount > 0) {
+      message = `Streak verified! You still have ${pendingCount} daily task(s) on your checklist to earn bonus XP.`;
+    } else {
+      message = `Awesome work! All daily tasks are finished today. Current streak is locked at ${profile.streakDays} days!`;
+    }
+
+    // Web Notification API
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        try {
+          new Notification(title, {
+            body: message,
+            icon: '/icons/STREAK.gif'
+          });
+        } catch {}
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(perm => {
+          if (perm === 'granted') {
+            try {
+              new Notification(title, { body: message, icon: '/icons/STREAK.gif' });
+            } catch {}
+          }
+        });
+      }
+    }
+
+    // In-App Toast & Audio Chime
+    playNotificationChime();
+    setReminderToast({
+      title,
+      message,
+      pendingTasksCount: pendingCount
+    });
+
+    // Auto-dismiss in-app toast after 8 seconds
+    setTimeout(() => {
+      setReminderToast(null);
+    }, 8000);
+  }, [dailyTasks, profile.streakDays, playNotificationChime]);
+
+  // Recurring 30-minute interval timer for streak & task reminders
+  useEffect(() => {
+    const THIRTY_MINUTES = 30 * 60 * 1000;
+    const interval = setInterval(() => {
+      triggerManualStreakReminder();
+    }, THIRTY_MINUTES);
+
+    return () => clearInterval(interval);
+  }, [triggerManualStreakReminder]);
+
+  return (
+    <StudentOsContext.Provider
+      value={{
+        activeModule,
+        setActiveModule,
+        isAiChatOpen,
+        setIsAiChatOpen,
+        isProfileModalOpen,
+        setIsProfileModalOpen,
+        isBackendConnected,
+        refreshBackendData,
+        isAuthenticated,
+        loginWithEntryCode,
+        logout,
+        geminiApiKey,
+        setGeminiApiKey,
+        youtubeApiKey,
+        setYoutubeApiKey,
+        isAiThinking,
+        enforceTaskAccountability,
+        dismissPunishmentAlert,
+        punishmentModalOpen,
+        setPunishmentModalOpen,
+        punishmentDetails,
+        profile,
+        updateProfile,
+        updateProfileAvatar,
+        activeFriend,
+        setActiveFriend,
+        friendStudyStatus: activeFriend.isFocusing ? `Focusing on ${activeFriend.focusSubject}` : 'In Study Room',
+        sendFriendNudge,
+        partnerChatMessages,
+        sendPartnerChatMessage,
+        notes,
+        addNote,
+        deleteNote,
+        pdfQuestionSheets,
+        addPdfQuestionSheet,
+        togglePdfQuestion,
+        generateCodingSheetByAi,
+        addQuestionFromScreenshot,
+        isVacationPaused,
+        toggleVacationMode,
+        hasWatchedPlaylistVideoToday,
+        markPlaylistVideoWatchedToday,
+        timerSeconds,
+        timerDurationMinutes,
+        setTimerDurationMinutes,
+        isTimerRunning,
+        timerMode,
+        timerSubject,
+        setTimerSubject,
+        startTimer,
+        pauseTimer,
+        resetTimer,
+        studySessions,
+        addStudySession,
+        courses,
+        addCourse,
+        deleteCourse,
+        currentWatchingVideo,
+        setCurrentWatchingVideo: handleSetCurrentWatchingVideo,
+        toggleLectureCompleted,
+        activePlayingCourse,
+        setActivePlayingCourse,
+        activeLecture,
+        setActiveLecture,
+        timetable,
+        collegeWorkingHours,
+        setCollegeWorkingHours: handleSetCollegeWorkingHours,
+        timetableImageUrl,
+        setTimetableImageUrl,
+        timetableSchedule,
+        isTodayHoliday,
+        setIsTodayHoliday,
+        uploadTimetableImage,
+        generateAiStudySchedule,
+        dsaSessions,
+        logDsaSession,
+        dsaProblems,
+        toggleDsaStatus,
+        addDsaProblem,
+        mlMilestones,
+        toggleMlMilestone,
+        dailyTasks,
+        toggleDailyTask,
+        addDailyTask,
+        isStreakProtectedToday,
+        habits,
+        toggleHabit,
+        goals,
+        updateGoalProgress,
+        heatmapData,
+        chatMessages,
+        sendChatMessage,
+        clearChat,
+        reminderToast,
+        dismissReminderToast,
+        triggerManualStreakReminder
+      }}
+    >
+      {children}
+    </StudentOsContext.Provider>
+  );
+};
+
+export const useStudentOs = (): StudentOsContextType => {
+  const context = useContext(StudentOsContext);
+  if (!context) {
+    throw new Error('useStudentOs must be used within a StudentOsProvider');
+  }
+  return context;
+};

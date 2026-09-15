@@ -1,0 +1,147 @@
+{
+  "users": [
+    {
+      "id": "u_diwakar",
+      "username": "diwakar",
+      "full_name": "Diwakar",
+      "email": "diwakar@nit.ac.in",
+      "avatar": "https://media.giphy.com/media/SWoSkN6DxTszqIKEqv/giphy.gif",
+      "college": "National Institute of Technology",
+      "streak": 0,
+      "xp": 100,
+      "level": 1,
+      "strikes": 0,
+      "isPunished": false,
+      "entryCode": "FUSION-DIWAKAR-2026",
+      "shortCode": "D2026",
+      "currentlyWatching": null
+    },
+    {
+      "id": "u_ayush",
+      "username": "ayush",
+      "full_name": "Ayush",
+      "email": "ayush@nit.ac.in",
+      "avatar": "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150",
+      "college": "National Institute of Technology",
+      "streak": 0,
+      "xp": 100,
+      "level": 1,
+      "strikes": 0,
+      "isPunished": false,
+      "entryCode": "FUSION-AYUSH-2026",
+      "shortCode": "A2026",
+      "currentlyWatching": null
+    }
+  ],
+  "studySessions": [],
+  "dsaSessions": [],
+  "partnerChat": [],
+  "youtubeApiKey": "AIzaSyA7CsbqsyB0Ll8kmqWO9FCx-_j1_ghayeQ",
+  "notes": [],
+  "pdfQuestionSheets": [
+    {
+      "id": "sheet_1",
+      "title": "Top 75 LeetCode Blind Sheet",
+      "subject": "DSA",
+      "totalCount": 10,
+      "completedCount": 0,
+      "questions": [
+        {
+          "id": "q1",
+          "title": "Two Sum",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q2",
+          "title": "Best Time to Buy and Sell Stock",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q3",
+          "title": "Contains Duplicate",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q4",
+          "title": "Product of Array Except Self",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q5",
+          "title": "Maximum Subarray (Kadane's)",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q6",
+          "title": "3Sum",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q7",
+          "title": "Container With Most Water",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q8",
+          "title": "Trapping Rain Water",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q9",
+          "title": "Reverse Linked List",
+          "platform": "LeetCode",
+          "completed": false
+        },
+        {
+          "id": "q10",
+          "title": "Merge Two Sorted Lists",
+          "platform": "LeetCode",
+          "completed": false
+        }
+      ]
+    }
+  ],
+  "dailyTasks": [
+    {
+      "id": "dt_1",
+      "title": "Solve 2 Medium problems on LeetCode / Codeforces",
+      "platform": "LeetCode",
+      "exp": 100,
+      "completed": false,
+      "isCoreStreakTask": true
+    },
+    {
+      "id": "dt_2",
+      "title": "Complete 2 Hours DSA Deep Focus Session",
+      "platform": "Focus Timer",
+      "exp": 100,
+      "completed": false,
+      "isCoreStreakTask": true
+    },
+    {
+      "id": "dt_3",
+      "title": "Watch 1 Module from ML Course Playlist",
+      "platform": "Courses Hub",
+      "exp": 100,
+      "completed": false,
+      "isCoreStreakTask": true
+    },
+    {
+      "id": "dt_4",
+      "title": "Review 1 Spaced Repetition Revision Note",
+      "platform": "Notes",
+      "exp": 50,
+      "completed": true,
+      "isCoreStreakTask": false
+    }
+  ],
+  "courses": []
+}

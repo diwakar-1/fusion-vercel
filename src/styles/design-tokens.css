@@ -1,0 +1,96 @@
+/* =========================================================
+   STUDENT OS — FROSTED GLASS & AMBIENT MESH DESIGN TOKENS
+   Inspired directly by the reference screenshot:
+   Soft organic mesh gradients, luminous glassmorphism,
+   crisp borders, and modular retro-tech typography accents.
+   ========================================================= */
+
+:root {
+  /* Ambient Mesh Colors */
+  --mesh-mint: #D7EFE4;
+  --mesh-mint-light: #EBF8F2;
+  --mesh-cream: #FFF9F0;
+  --mesh-cream-light: #FFFDF8;
+  --mesh-peach: #FFB88C;
+  --mesh-peach-soft: #FFE3D3;
+  --mesh-orange: #FF7A45;
+  --mesh-orange-glow: rgba(255, 122, 69, 0.4);
+  --mesh-cyan: #C7EEF7;
+  --mesh-cyan-glow: rgba(199, 238, 247, 0.5);
+
+  /* Frosted Glass Surfaces */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-bg-subtle: rgba(255, 255, 255, 0.45);
+  --glass-bg-active: rgba(255, 255, 255, 0.88);
+  --glass-bg-elevated: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-border-subtle: rgba(255, 255, 255, 0.4);
+  --glass-border-dark: rgba(30, 30, 36, 0.08);
+  --glass-inner-highlight: inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-blur: blur(24px) saturate(180%);
+  --glass-blur-sm: blur(12px) saturate(150%);
+  --glass-blur-lg: blur(36px) saturate(200%);
+
+  /* Elevation Shadows */
+  --shadow-glass: 0 10px 30px -5px rgba(25, 30, 45, 0.08), 0 4px 12px -2px rgba(25, 30, 45, 0.04);
+  --shadow-elevated: 0 20px 40px -10px rgba(25, 30, 45, 0.12), 0 6px 16px -3px rgba(25, 30, 45, 0.06);
+  --shadow-glowing-orange: 0 14px 28px -4px rgba(255, 122, 69, 0.35);
+  --shadow-glowing-cyan: 0 14px 28px -4px rgba(56, 189, 248, 0.35);
+
+  /* Solid & Accent Colors */
+  --charcoal-pill: #1E1E24;
+  --charcoal-pill-hover: #2D2D36;
+  --charcoal-pill-text: #FFFFFF;
+
+  --text-primary: #18181B;
+  --text-secondary: #52525B;
+  --text-muted: #71717A;
+  --text-light: #A1A1AA;
+
+  --accent-green: #10B981;
+  --accent-green-bg: #ECFDF5;
+  --accent-amber: #F59E0B;
+  --accent-red: #EF4444;
+  --accent-indigo: #6366F1;
+  --accent-purple: #8B5CF6;
+  --accent-teal: #14B8A6;
+
+  /* Orb Gradients */
+  --gradient-orb: linear-gradient(135deg, #5EEAD4 0%, #38BDF8 30%, #FB923C 70%, #F43F5E 100%);
+  --gradient-continue: linear-gradient(90deg, #38BDF8 0%, #FB923C 100%);
+  --gradient-premium-banner: linear-gradient(135deg, rgba(215, 239, 228, 0.95) 0%, rgba(199, 238, 247, 0.85) 50%, rgba(255, 249, 240, 0.9) 100%);
+
+  /* Typography */
+  --font-dashboard: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Outfit', sans-serif;
+  --font-tech: 'Space Grotesk', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Border Radii */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-pill: 9999px;
+
+  /* Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+  /* Solo Leveling / Cyber-Dark Analytics HUD (Image 2) */
+  --hud-bg-main: #0B0A14;
+  --hud-card-bg: rgba(20, 18, 36, 0.85);
+  --hud-card-elevated: rgba(28, 25, 52, 0.9);
+  --hud-border: rgba(168, 85, 247, 0.22);
+  --hud-border-glow: rgba(217, 70, 239, 0.45);
+  --hud-neon-purple: #C084FC;
+  --hud-neon-magenta: #E879F9;
+  --hud-neon-pink: #F472B6;
+  --hud-glow-purple: 0 0 24px rgba(192, 132, 252, 0.35);
+  --hud-glow-bar: 0 0 14px rgba(232, 121, 249, 0.6);
+  --hud-text-primary: #F8FAFC;
+  --hud-text-secondary: #CBD5E1;
+  --hud-text-muted: #94A3B8;
+}
