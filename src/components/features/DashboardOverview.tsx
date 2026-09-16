@@ -81,22 +81,30 @@ export const DashboardOverview: React.FC = () => {
   };
 
   const handleCompleteBigTask = (taskId: string, title: string, exp: number = 100) => {
+    // Find the task to check if XP was already claimed
+    const task = dailyTasks.find(t => t.id === taskId);
+    const isFirstTime = !task?.xpClaimed;
+
     toggleDailyTask(taskId, true);
     try {
       confetti({
-        particleCount: 110,
-        spread: 80,
+        particleCount: isFirstTime ? 110 : 40,
+        spread: isFirstTime ? 80 : 40,
         origin: { y: 0.6 }
       });
     } catch {}
-    setCelebration({
-      taskTitle: title,
-      xp: exp,
-      streakGranted: true
-    });
-    setTimeout(() => {
-      setCelebration(null);
-    }, 4500);
+
+    // Only show XP celebration if this is the first time
+    if (isFirstTime) {
+      setCelebration({
+        taskTitle: title,
+        xp: exp,
+        streakGranted: true
+      });
+      setTimeout(() => {
+        setCelebration(null);
+      }, 4500);
+    }
   };
 
   const activeCourse = courses[0];
@@ -622,7 +630,7 @@ export const DashboardOverview: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600 }}>
-                      {task.platform} • +{task.exp} XP
+                      {task.platform} • {task.xpClaimed ? '✓ XP Claimed' : `+${task.exp} XP`}
                     </span>
                     {task.completed && (
                       <span

@@ -1365,11 +1365,20 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setDailyTasks(prev => {
       const updated = prev.map(t => {
         if (t.id === taskId) {
-          if (completed && !t.completed) {
+          // XP is awarded ONLY on the FIRST completion (xpClaimed not set yet)
+          // Unchecking and rechecking will NOT re-award XP — exploit closed
+          const isFirstCompletion = completed && !t.xpClaimed;
+          if (isFirstCompletion) {
             confetti({ particleCount: 45, spread: 60 });
             setProfile(p => ({ ...p, totalXp: p.totalXp + t.exp }));
           }
-          return { ...t, completed, completedBy: completed ? currentUser : undefined };
+          return {
+            ...t,
+            completed,
+            completedBy: completed ? currentUser : t.completedBy,
+            // xpClaimed stays TRUE forever once set — cannot be reset by unchecking
+            xpClaimed: t.xpClaimed || isFirstCompletion
+          };
         }
         return t;
       });

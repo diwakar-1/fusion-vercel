@@ -171,6 +171,7 @@ export interface DailyTask {
   isCustom?: boolean;
   createdBy?: string;
   completedBy?: string;
+  xpClaimed?: boolean;  // XP can only be awarded ONCE — prevents check/uncheck exploit
 }
 
 export interface Habit {
