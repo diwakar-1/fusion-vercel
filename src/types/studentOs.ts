@@ -12,7 +12,7 @@ export interface AIModel {
 
 export interface StudentProfile {
   id?: string;
-  name: 'Diwakar' | 'Ayush';
+  name: string;
   handle: string;
   avatar: string;
   college?: string;

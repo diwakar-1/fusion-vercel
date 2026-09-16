@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useStudentOs } from '../../context/StudentOsContext';
 import { GlassCard } from '../common/GlassCard';
 import { VideoCourse, PlaylistLecture, YouTubeRecommendation } from '../../types/studentOs';
@@ -87,6 +88,19 @@ export const CoursePlaylists: React.FC = () => {
   const [showYtKeyModal, setShowYtKeyModal] = useState<boolean>(false);
   const [tempYtKey, setTempYtKey] = useState<string>(youtubeApiKey || '');
   const [ytKeyStatusMsg, setYtKeyStatusMsg] = useState<string | null>(null);
+
+  const [isAndroidOrMobile, setIsAndroidOrMobile] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return Capacitor.isNativePlatform() || window.innerWidth <= 768;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsAndroidOrMobile(Capacitor.isNativePlatform() || window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const loadDailyRecommendations = async (filter: 'ALL' | 'DSA' | 'ML' | 'SYSTEM_DESIGN' = recFilter) => {
     setLoadingRecommendations(true);
@@ -364,99 +378,101 @@ export const CoursePlaylists: React.FC = () => {
         </div>
       </div>
 
-      {/* Quick Add Playlist Bar (Top-level, Zero scrolling needed on Android) */}
-      <GlassCard
-        style={{
-          padding: '14px 18px',
-          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(254, 242, 242, 0.92) 100%)',
-          border: '1.5px solid rgba(239, 68, 68, 0.25)',
-          boxShadow: '0 4px 16px -2px rgba(239, 68, 68, 0.08)'
-        }}
-      >
-        <form
-          onSubmit={handleCreateCourse}
+      {/* Quick Add Playlist Bar (Top-level: For Android / Mobile devices - Zero scrolling needed) */}
+      {isAndroidOrMobile && (
+        <GlassCard
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            flexWrap: 'wrap'
+            padding: '14px 18px',
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(254, 242, 242, 0.92) 100%)',
+            border: '1.5px solid rgba(239, 68, 68, 0.25)',
+            boxShadow: '0 4px 16px -2px rgba(239, 68, 68, 0.08)'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <YoutubeIcon size={18} color="#EF4444" />
-            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#18181B' }}>
-              Add Playlist:
-            </span>
-          </div>
-
-          <input
-            type="url"
-            placeholder="Paste YouTube Playlist link (e.g. https://youtube.com/playlist?list=...)"
-            value={newUrl}
-            onChange={e => setNewUrl(e.target.value)}
-            required
+          <form
+            onSubmit={handleCreateCourse}
             style={{
-              flex: '2 1 240px',
-              padding: '9px 14px',
-              borderRadius: 'var(--radius-pill)',
-              border: '1.5px solid rgba(239, 68, 68, 0.3)',
-              fontSize: '0.88rem',
-              outline: 'none',
-              background: '#FFFFFF'
-            }}
-          />
-
-          <input
-            type="text"
-            placeholder="Course Title (Optional)"
-            value={newTitle}
-            onChange={e => setNewTitle(e.target.value)}
-            style={{
-              flex: '1 1 160px',
-              padding: '9px 14px',
-              borderRadius: 'var(--radius-pill)',
-              border: '1px solid rgba(0,0,0,0.12)',
-              fontSize: '0.88rem',
-              outline: 'none',
-              background: '#FFFFFF'
-            }}
-          />
-
-          <select
-            value={newSubject}
-            onChange={e => setNewSubject(e.target.value)}
-            style={{
-              padding: '9px 12px',
-              borderRadius: 'var(--radius-pill)',
-              border: '1px solid rgba(0,0,0,0.12)',
-              fontSize: '0.85rem',
-              background: '#FFFFFF',
-              fontWeight: 600
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap'
             }}
           >
-            <option value="DSA">DSA</option>
-            <option value="Machine Learning">AIML</option>
-            <option value="Operating Systems">OS</option>
-            <option value="Web Dev">Web Dev</option>
-            <option value="System Design">System Design</option>
-          </select>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <YoutubeIcon size={18} color="#EF4444" />
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#18181B' }}>
+                Add Playlist:
+              </span>
+            </div>
 
-          <button
-            type="submit"
-            disabled={!newUrl.trim() || isFetchingPlaylist}
-            className="charcoal-pill-btn"
-            style={{
-              padding: '9px 18px',
-              fontSize: '0.86rem',
-              background: 'linear-gradient(135deg, #1E1E24 0%, #EF4444 100%)',
-              flexShrink: 0
-            }}
-          >
-            <Plus size={15} />
-            <span>{isFetchingPlaylist ? 'Importing...' : 'Add Whole Playlist'}</span>
-          </button>
-        </form>
-      </GlassCard>
+            <input
+              type="url"
+              placeholder="Paste YouTube Playlist link (e.g. https://youtube.com/playlist?list=...)"
+              value={newUrl}
+              onChange={e => setNewUrl(e.target.value)}
+              required
+              style={{
+                flex: '2 1 240px',
+                padding: '9px 14px',
+                borderRadius: 'var(--radius-pill)',
+                border: '1.5px solid rgba(239, 68, 68, 0.3)',
+                fontSize: '0.88rem',
+                outline: 'none',
+                background: '#FFFFFF'
+              }}
+            />
+
+            <input
+              type="text"
+              placeholder="Course Title (Optional)"
+              value={newTitle}
+              onChange={e => setNewTitle(e.target.value)}
+              style={{
+                flex: '1 1 160px',
+                padding: '9px 14px',
+                borderRadius: 'var(--radius-pill)',
+                border: '1px solid rgba(0,0,0,0.12)',
+                fontSize: '0.88rem',
+                outline: 'none',
+                background: '#FFFFFF'
+              }}
+            />
+
+            <select
+              value={newSubject}
+              onChange={e => setNewSubject(e.target.value)}
+              style={{
+                padding: '9px 12px',
+                borderRadius: 'var(--radius-pill)',
+                border: '1px solid rgba(0,0,0,0.12)',
+                fontSize: '0.85rem',
+                background: '#FFFFFF',
+                fontWeight: 600
+              }}
+            >
+              <option value="DSA">DSA</option>
+              <option value="Machine Learning">AIML</option>
+              <option value="Operating Systems">OS</option>
+              <option value="Web Dev">Web Dev</option>
+              <option value="System Design">System Design</option>
+            </select>
+
+            <button
+              type="submit"
+              disabled={!newUrl.trim() || isFetchingPlaylist}
+              className="charcoal-pill-btn"
+              style={{
+                padding: '9px 18px',
+                fontSize: '0.86rem',
+                background: 'linear-gradient(135deg, #1E1E24 0%, #EF4444 100%)',
+                flexShrink: 0
+              }}
+            >
+              <Plus size={15} />
+              <span>{isFetchingPlaylist ? 'Importing...' : 'Add Whole Playlist'}</span>
+            </button>
+          </form>
+        </GlassCard>
+      )}
 
       {/* Course Switcher Pills */}
       {/* Top Course Filter Strip / Tabs with Remove Playlist Option */}

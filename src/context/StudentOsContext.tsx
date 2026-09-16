@@ -160,6 +160,20 @@ interface StudentOsContextType {
   reminderToast: { title: string; message: string; pendingTasksCount: number } | null;
   dismissReminderToast: () => void;
   triggerManualStreakReminder: () => void;
+  notificationSettings: {
+    enabled: boolean;
+    backgroundEnabled: boolean;
+    muteInAppPopups: boolean;
+    intervalMinutes: number;
+  };
+  updateNotificationSettings: (updates: Partial<{
+    enabled: boolean;
+    backgroundEnabled: boolean;
+    muteInAppPopups: boolean;
+    intervalMinutes: number;
+  }>) => void;
+  testBackgroundNotification: () => Promise<{ success: boolean; message: string }>;
+  scheduleNativeReminders: (intervalMins?: number) => Promise<void>;
 }
 
 const DEFAULT_DIWAKAR_PROFILE: StudentProfile = {
@@ -1976,6 +1990,144 @@ INSTRUCTIONS:
     return () => clearInterval(interval);
   }, [refreshBackendData]);
 
+  // Notification & Background System Settings
+  const [notificationSettings, setNotificationSettings] = useState<{
+    enabled: boolean;
+    backgroundEnabled: boolean;
+    muteInAppPopups: boolean;
+    intervalMinutes: number;
+  }>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_notification_settings');
+      return saved ? JSON.parse(saved) : {
+        enabled: true,
+        backgroundEnabled: true,
+        muteInAppPopups: false,
+        intervalMinutes: 30
+      };
+    } catch {
+      return {
+        enabled: true,
+        backgroundEnabled: true,
+        muteInAppPopups: false,
+        intervalMinutes: 30
+      };
+    }
+  });
+
+  const updateNotificationSettings = useCallback((updates: Partial<{
+    enabled: boolean;
+    backgroundEnabled: boolean;
+    muteInAppPopups: boolean;
+    intervalMinutes: number;
+  }>) => {
+    setNotificationSettings(prev => {
+      const next = { ...prev, ...updates };
+      try { localStorage.setItem('fusion_notification_settings', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const scheduleNativeReminders = useCallback(async (intervalMins: number = notificationSettings.intervalMinutes) => {
+    if (!Capacitor.isNativePlatform() || !notificationSettings.backgroundEnabled) return;
+    try {
+      const pending = await LocalNotifications.getPending();
+      const reminderIds = pending.notifications
+        .filter(n => n.extra?.type === 'recurring_streak')
+        .map(n => ({ id: n.id }));
+      if (reminderIds.length > 0) {
+        await LocalNotifications.cancel({ notifications: reminderIds });
+      }
+
+      const intervalMs = Math.max(5, intervalMins) * 60 * 1000;
+      const notifications = [];
+      for (let i = 1; i <= 24; i++) {
+        notifications.push({
+          title: '🔥 FUSION Streak Check',
+          body: 'Time to check your daily tasks and protect your streak!',
+          id: 90000 + i,
+          schedule: {
+            at: new Date(Date.now() + intervalMs * i),
+            allowWhileIdle: true
+          },
+          smallIcon: 'ic_stat_fusion',
+          largeIcon: 'ic_launcher',
+          sound: 'default',
+          channelId: 'fusion_reminders',
+          extra: { type: 'recurring_streak' }
+        });
+      }
+      await LocalNotifications.schedule({ notifications });
+    } catch (err) {
+      console.warn('scheduleNativeReminders error', err);
+    }
+  }, [notificationSettings.backgroundEnabled, notificationSettings.intervalMinutes]);
+
+  const testBackgroundNotification = useCallback(async (): Promise<{ success: boolean; message: string }> => {
+    const pendingTasks = dailyTasks.filter(t => !t.completed);
+    const pendingCount = pendingTasks.length;
+    const title = '🔥 FUSION Background Alert';
+    const message = pendingCount > 0
+      ? `You have ${pendingCount} pending task(s). Open FUSION to keep your streak safe!`
+      : `All tasks complete today! Streak safely active at ${profile.streakDays} days.`;
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await LocalNotifications.requestPermissions();
+        await LocalNotifications.createChannel({
+          id: 'fusion_reminders',
+          name: 'FUSION Reminders',
+          description: 'Streak and task reminder notifications',
+          importance: 5,
+          visibility: 1,
+          vibration: true,
+          sound: 'default'
+        });
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title,
+              body: message,
+              id: 99999,
+              schedule: {
+                at: new Date(Date.now() + 5000), // Fires in 5 seconds
+                allowWhileIdle: true
+              },
+              smallIcon: 'ic_stat_fusion',
+              largeIcon: 'ic_launcher',
+              sound: 'default',
+              channelId: 'fusion_reminders',
+              extra: { type: 'test_background' }
+            }
+          ]
+        });
+        return {
+          success: true,
+          message: 'Test scheduled! Minimize or close the app now to see it in your status bar in 5 seconds.'
+        };
+      } catch (err: any) {
+        return { success: false, message: `Failed to schedule: ${err?.message || err}` };
+      }
+    } else if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission !== 'granted') {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          return { success: false, message: 'Notification permission was denied.' };
+        }
+      }
+      setTimeout(() => {
+        try {
+          new Notification(title, {
+            body: message,
+            icon: '/icons/STREAK.gif'
+          });
+        } catch {}
+      }, 5000);
+      return { success: true, message: 'Web notification scheduled in 5 seconds! Switch tabs or minimize browser.' };
+    }
+    return { success: false, message: 'Notifications not supported in this environment.' };
+  }, [dailyTasks, profile.streakDays]);
+
   // 30-Minute Streak & Task Notification System
   const [reminderToast, setReminderToast] = useState<{ title: string; message: string; pendingTasksCount: number } | null>(null);
 
@@ -1984,6 +2136,8 @@ INSTRUCTIONS:
   }, []);
 
   const triggerManualStreakReminder = useCallback(async () => {
+    if (!notificationSettings.enabled) return;
+
     const pendingTasks = dailyTasks.filter(t => !t.completed);
     const pendingCount = pendingTasks.length;
     const coreTasksPending = dailyTasks.filter(t => t.isCoreStreakTask && !t.completed).length;
@@ -2001,7 +2155,6 @@ INSTRUCTIONS:
 
     // Native or Web Notification
     if (Capacitor.isNativePlatform()) {
-      // Use Capacitor Local Notifications on Android
       try {
         await LocalNotifications.schedule({
           notifications: [
@@ -2009,7 +2162,7 @@ INSTRUCTIONS:
               title,
               body: message,
               id: Date.now(),
-              schedule: { at: new Date(Date.now() + 500) },
+              schedule: { at: new Date(Date.now() + 500), allowWhileIdle: true },
               smallIcon: 'ic_stat_fusion',
               largeIcon: 'ic_launcher',
               sound: 'default',
@@ -2020,7 +2173,6 @@ INSTRUCTIONS:
         });
       } catch {}
     } else if (typeof window !== 'undefined' && 'Notification' in window) {
-      // Web Notification API fallback
       if (Notification.permission === 'granted') {
         try {
           new Notification(title, {
@@ -2039,19 +2191,21 @@ INSTRUCTIONS:
       }
     }
 
-    // In-App Toast & Audio Chime
-    playNotificationChime();
-    setReminderToast({
-      title,
-      message,
-      pendingTasksCount: pendingCount
-    });
+    // In-App Toast & Audio Chime (only if user hasn't muted in-app popups)
+    if (!notificationSettings.muteInAppPopups) {
+      playNotificationChime();
+      setReminderToast({
+        title,
+        message,
+        pendingTasksCount: pendingCount
+      });
 
-    // Auto-dismiss in-app toast after 8 seconds
-    setTimeout(() => {
-      setReminderToast(null);
-    }, 8000);
-  }, [dailyTasks, profile.streakDays, playNotificationChime]);
+      // Auto-dismiss in-app toast after 8 seconds
+      setTimeout(() => {
+        setReminderToast(null);
+      }, 8000);
+    }
+  }, [dailyTasks, profile.streakDays, playNotificationChime, notificationSettings.enabled, notificationSettings.muteInAppPopups]);
 
   // Request notification permission on native platforms & create channel
   useEffect(() => {
@@ -2078,51 +2232,21 @@ INSTRUCTIONS:
     }
   }, []);
 
-  // Recurring 30-minute interval timer for streak & task reminders
+  // Recurring interval timer for streak & task reminders
   useEffect(() => {
-    const THIRTY_MINUTES = 30 * 60 * 1000;
+    if (!notificationSettings.enabled) return;
 
-    // On native, also schedule repeating local notifications for reliability
-    if (Capacitor.isNativePlatform()) {
-      const scheduleNativeReminders = async () => {
-        try {
-          // Cancel previous scheduled reminders to avoid duplicates
-          const pending = await LocalNotifications.getPending();
-          const reminderIds = pending.notifications
-            .filter(n => n.extra?.type === 'recurring_streak')
-            .map(n => ({ id: n.id }));
-          if (reminderIds.length > 0) {
-            await LocalNotifications.cancel({ notifications: reminderIds });
-          }
-
-          // Schedule next 12 hours of 30-min reminders (24 notifications)
-          const notifications = [];
-          for (let i = 1; i <= 24; i++) {
-            notifications.push({
-              title: '🔥 FUSION Streak Check',
-              body: 'Time to check your daily tasks and protect your streak!',
-              id: 90000 + i,
-              schedule: { at: new Date(Date.now() + THIRTY_MINUTES * i) },
-              smallIcon: 'ic_stat_fusion',
-              largeIcon: 'ic_launcher',
-              sound: 'default',
-              channelId: 'fusion_reminders',
-              extra: { type: 'recurring_streak' }
-            });
-          }
-          await LocalNotifications.schedule({ notifications });
-        } catch {}
-      };
-      scheduleNativeReminders();
+    if (Capacitor.isNativePlatform() && notificationSettings.backgroundEnabled) {
+      scheduleNativeReminders(notificationSettings.intervalMinutes);
     }
 
-    // In-app interval works on both web and native (when app is in foreground)
+    const intervalMs = Math.max(5, notificationSettings.intervalMinutes) * 60 * 1000;
     const interval = setInterval(() => {
       triggerManualStreakReminder();
-    }, THIRTY_MINUTES);
+    }, intervalMs);
 
     return () => clearInterval(interval);
-  }, [triggerManualStreakReminder]);
+  }, [notificationSettings.enabled, notificationSettings.backgroundEnabled, notificationSettings.intervalMinutes, triggerManualStreakReminder, scheduleNativeReminders]);
 
   return (
     <StudentOsContext.Provider
@@ -2224,7 +2348,11 @@ INSTRUCTIONS:
         clearChat,
         reminderToast,
         dismissReminderToast,
-        triggerManualStreakReminder
+        triggerManualStreakReminder,
+        notificationSettings,
+        updateNotificationSettings,
+        testBackgroundNotification,
+        scheduleNativeReminders
       }}
     >
       {children}

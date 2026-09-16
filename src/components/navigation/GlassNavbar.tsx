@@ -1,6 +1,6 @@
 import React from 'react';
 import { useStudentOs } from '../../context/StudentOsContext';
-import { Sparkles, Flame, Zap, Users, MessageSquareText, Activity, Bell } from 'lucide-react';
+import { Sparkles, Flame, Zap, Users, MessageSquareText, Activity, Bell, Settings } from 'lucide-react';
 
 export const GlassNavbar: React.FC = () => {
   const {
@@ -136,27 +136,42 @@ export const GlassNavbar: React.FC = () => {
           <span>FUSE</span>
         </button>
 
-        {/* User Profile Avatar */}
-        <div
+        {/* Settings & Profile Button */}
+        <button
           onClick={() => setIsProfileModalOpen(true)}
+          className="glass-pill nav-badge-compact"
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            padding: 2,
-            background: 'linear-gradient(135deg, #5EEAD4 0%, #FB923C 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 10px 4px 4px',
             cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-            flexShrink: 0
+            border: '1px solid rgba(0, 0, 0, 0.1)',
+            background: 'rgba(255, 255, 255, 0.75)'
           }}
-          title={`${profile.name} (${profile.handle}) - Click to customize`}
+          title={`${profile.name} (${profile.handle}) - Settings & Profile`}
         >
-          <img
-            src={profile.avatar}
-            alt={profile.name}
-            style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-          />
-        </div>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              padding: 2,
+              background: 'linear-gradient(135deg, #5EEAD4 0%, #FB923C 100%)',
+              flexShrink: 0
+            }}
+          >
+            <img
+              src={profile.avatar}
+              alt={profile.name}
+              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+            />
+          </div>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }} className="nav-badge-hide-mobile">
+            Settings
+          </span>
+          <Settings size={15} style={{ color: 'var(--text-secondary)' }} />
+        </button>
       </div>
     </header>
   );
