@@ -393,8 +393,10 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const setGeminiApiKey = (key: string) => {
-    setGeminiApiKeyState(key.trim());
-    GeminiService.setApiKey(currentUser, key.trim());
+    const clean = key.trim().replace(/^['"]|['"]$/g, '');
+    setGeminiApiKeyState(clean);
+    GeminiService.setApiKey(currentUser, clean);
+    cloudSync.pushState(currentUser, { geminiApiKey: clean });
   };
 
   // YouTube API Key Management
@@ -403,10 +405,11 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const setYoutubeApiKey = (key: string) => {
-    const clean = key.trim();
+    const clean = key.trim().replace(/^['"]|['"]$/g, '');
     setYoutubeApiKeyState(clean);
     YouTubeService.setApiKey(currentUser, clean);
     api.setYoutubeKey(clean);
+    cloudSync.pushState(currentUser, { youtubeApiKey: clean });
   };
 
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
@@ -969,9 +972,21 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setDailyTasks(remoteData.dailyTasks);
             try { localStorage.setItem('fusion_daily_tasks', JSON.stringify(remoteData.dailyTasks)); } catch {}
           }
-          if (Array.isArray(remoteData.notes)) {
-            setNotes(remoteData.notes);
-            try { localStorage.setItem('fusion_notes', JSON.stringify(remoteData.notes)); } catch {}
+          if (Array.isArray(remoteData.notes) && remoteData.notes.length > 0) {
+            // Merge remote notes into local instead of blindly overwriting (avoids empty cloud payload wiping local notes)
+            setNotes(prev => {
+              const merged = [...prev];
+              remoteData.notes!.forEach((rn: any) => {
+                const idx = merged.findIndex(n => n.id === rn.id);
+                if (idx >= 0) {
+                  merged[idx] = { ...rn, pdfUrl: merged[idx].pdfUrl || rn.pdfUrl };
+                } else {
+                  merged.unshift(rn);
+                }
+              });
+              try { localStorage.setItem('fusion_notes', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
           }
           if (remoteData.timetableSchedule && Array.isArray(remoteData.timetableSchedule)) {
             setTimetableSchedule(remoteData.timetableSchedule);
@@ -1605,6 +1620,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           pdfUrl: undefined
         }));
         localStorage.setItem('fusion_notes', JSON.stringify(cleanForStorage));
+        // Immediately push to cloud so Android can see new note
+        cloudSync.pushState(currentUser, { notes: cleanForStorage }).catch(e => console.warn('[CloudSync] addNote push error', e));
       } catch (e) {
         console.warn('[Note Storage Quota Warning]', e);
       }
@@ -1628,6 +1645,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           pdfUrl: undefined
         }));
         localStorage.setItem('fusion_notes', JSON.stringify(cleanForStorage));
+        // Immediately push to cloud so Android reflects deletion
+        cloudSync.pushState(currentUser, { notes: cleanForStorage }).catch(e => console.warn('[CloudSync] deleteNote push error', e));
       } catch {}
       return updated;
     });
@@ -2198,6 +2217,9 @@ INSTRUCTIONS:
 
   // Full Real-Time Database Sync
   const refreshBackendData = useCallback(async () => {
+    // Skip localhost polling on Android – the local backend doesn't exist there.
+    // All sync on Android goes through cloudSync (Vercel) instead.
+    if (Capacitor.isNativePlatform()) return;
     try {
       const res = await api.getSyncData();
       if (res.data && res.data.success) {

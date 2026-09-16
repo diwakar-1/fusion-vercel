@@ -116,6 +116,10 @@ export const CoursePlaylists: React.FC = () => {
 
   useEffect(() => {
     loadDailyRecommendations(recFilter);
+    const hourlyInterval = setInterval(() => {
+      loadDailyRecommendations(recFilter);
+    }, 60 * 1000 * 10); // Check every 10 mins to rotate seamlessly on the hour
+    return () => clearInterval(hourlyInterval);
   }, [youtubeApiKey, recFilter]);
 
   useEffect(() => {
@@ -1029,7 +1033,7 @@ export const CoursePlaylists: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <YoutubeIcon size={24} color="#EF4444" />
                 <h3 className="font-tech" style={{ fontSize: '1.25rem', fontWeight: 800 }}>
-                  Daily Curated Video Recommendations
+                  Hourly Curated Video Recommendations
                 </h3>
                 <span
                   style={{

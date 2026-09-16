@@ -227,24 +227,46 @@ export class YouTubeService {
   }
 
   /**
-   * Fetch daily curated recommendations using YouTube Data API v3 if API key provided,
-   * otherwise returns verified live embeddable masterclasses with zero downtime.
+  /**
+   * 24-Hour Rotating Computer Science & AI Topics
+   * Guarantees that recommended videos automatically change every hour.
+   */
+  private static readonly HOURLY_TOPICS = [
+    { topic: 'Dynamic Programming & Memoization', dsa: 'Striver dynamic programming memoization tabulation', ml: 'Karpathy neural networks backpropagation', sd: 'Distributed caching Redis Memcached system design' },
+    { topic: 'Graph Theory & BFS/DFS Traversal', dsa: 'Striver graph BFS DFS cycle detection', ml: 'Graph neural networks representation learning', sd: 'Kafka RabbitMQ message broker architecture' },
+    { topic: 'Transformers & Large Language Models', dsa: 'Trie prefix tree autocomplete string algorithms', ml: 'Andrej Karpathy build nanoGPT transformer from scratch', sd: 'Vector database similarity search RAG architecture' },
+    { topic: 'Binary Search & Monotonic Conditions', dsa: 'Striver binary search on answers allocation problems', ml: 'Activation functions ReLU Softmax neural foundations', sd: 'Database indexing B-Tree LSM tree internals' },
+    { topic: 'Binary Trees & Lowest Common Ancestor', dsa: 'Binary tree boundary order vertical traversal Striver', ml: 'Convolutional neural networks vision transformers', sd: 'Database sharding consistent hashing ByteByteGo' },
+    { topic: 'Sliding Window & Two Pointers', dsa: 'Sliding window longest substring two pointers', ml: 'Self-attention mechanism query key value intuitive', sd: 'Rate limiter Token Bucket algorithm ByteByteGo' },
+    { topic: 'Greedy Algorithms & Priority Queues', dsa: 'Heap priority queue Dijkstra algorithm Striver', ml: 'Diffusion models stable diffusion latent space', sd: 'API Gateway reverse proxy load balancing' },
+    { topic: 'Backtracking & Recursion Trees', dsa: 'Backtracking N-Queens permutations subsets Striver', ml: 'Reinforcement learning policy gradients PPO', sd: 'Distributed transactions two-phase commit Saga' },
+    { topic: 'Topological Sort & DAGs', dsa: 'Kahns algorithm topological sort course schedule', ml: 'Autoencoders variational autoencoders generative AI', sd: 'High-throughput payment gateway architecture' },
+    { topic: 'Disjoint Set Union & Minimum Spanning Trees', dsa: 'Disjoint set union Kruskals Prims algorithm', ml: 'Optimization algorithms Adam RMSProp SGD learning rates', sd: 'Distributed locks Redis Redlock ZooKeeper' },
+    { topic: 'Bit Manipulation & Fast Math', dsa: 'Bit manipulation subsets XOR single number', ml: 'Model quantization LoRA QLoRA fine-tuning LLM', sd: 'Content delivery network CDN edge computing' },
+    { topic: 'Advanced Dynamic Programming on Trees', dsa: 'Tree DP maximum path sum rerooting technique', ml: 'Mixture of Experts MoE deep learning switch transformer', sd: 'Google Drive Dropbox file sync system design' }
+  ];
+
+  /**
+   * Fetch hourly curated recommendations using YouTube Data API v3 if API key provided,
+   * otherwise returns verified live embeddable masterclasses rotating hourly.
    */
   public static async fetchDailyRecommendations(
     apiKey?: string,
     queryType: 'DSA' | 'ML' | 'SYSTEM_DESIGN' | 'ALL' = 'ALL'
   ): Promise<YouTubeRecommendation[]> {
     const key = apiKey || this.getApiKey();
+    const currentHour = new Date().getHours();
+    const currentHourlyFocus = this.HOURLY_TOPICS[currentHour % this.HOURLY_TOPICS.length];
 
     if (key) {
       try {
-        let query = 'Striver DSA OR Andrej Karpathy Machine Learning';
+        let query = `${currentHourlyFocus.dsa} OR ${currentHourlyFocus.ml}`;
         if (queryType === 'DSA') {
-          query = 'Striver A2Z DSA leetcode algorithm';
+          query = currentHourlyFocus.dsa;
         } else if (queryType === 'ML') {
-          query = 'Machine learning neural networks deep learning tutorial';
+          query = currentHourlyFocus.ml;
         } else if (queryType === 'SYSTEM_DESIGN') {
-          query = 'System design interview Gaurav Sen ByteByteGo high scalability';
+          query = currentHourlyFocus.sd;
         }
 
         const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${encodeURIComponent(
@@ -273,7 +295,7 @@ export class YouTubeService {
               else if (isMl) cat = 'Machine Learning';
 
               return {
-                id: `yt_${item.id?.videoId || idx}_${Date.now()}`,
+                id: `yt_${item.id?.videoId || idx}_${currentHour}_${Date.now()}`,
                 videoId: item.id?.videoId || '',
                 title: title.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&'),
                 channelTitle: item.snippet?.channelTitle || 'YouTube Academy',
@@ -294,8 +316,8 @@ export class YouTubeService {
       }
     }
 
-    // Filter fallback masterclasses according to query
-    const allFallbacks: YouTubeRecommendation[] = [
+    // Curated 24-video Masterclasses with Hourly Rotation Offset
+    const masterclassPool: YouTubeRecommendation[] = [
       {
         id: 'rec_dsa_1',
         videoId: 'EAR7De6G0ms',
@@ -357,6 +379,26 @@ export class YouTubeService {
         category: 'System Design'
       },
       {
+        id: 'rec_ml_3',
+        videoId: 'PaCmpygFfXo',
+        title: 'Building makemore Part 1: Language Modeling from Scratch',
+        channelTitle: 'Andrej Karpathy',
+        description: 'Bigram language models, counting, neural net formulation, sampling, and negative log likelihood loss.',
+        thumbnail: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=480',
+        publishedAt: 'Today',
+        category: 'Machine Learning'
+      },
+      {
+        id: 'rec_dsa_3',
+        videoId: 'thLgkQljPr4',
+        title: 'Dynamic Programming: 1D DP Climbing Stairs & Frog Jump',
+        channelTitle: 'take U forward (Striver)',
+        description: 'From recursive brute force to memoization and space optimization in 1D dynamic programming.',
+        thumbnail: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=480',
+        publishedAt: 'Today',
+        category: 'DSA'
+      },
+      {
         id: 'rec_ml_4',
         videoId: 'L_G0e4k06a0',
         title: 'Transformers and Self-Attention Clearly Explained',
@@ -375,13 +417,40 @@ export class YouTubeService {
         thumbnail: 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=480',
         publishedAt: 'Today',
         category: 'DSA'
+      },
+      {
+        id: 'rec_sd_3',
+        videoId: 'jQdnk0GstfE',
+        title: 'Consistent Hashing: How Scalable Distributed Databases Work',
+        channelTitle: 'Gaurav Sen',
+        description: 'Virtual nodes, hash rings, and preventing cascading failures in distributed cache clusters.',
+        thumbnail: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=480',
+        publishedAt: 'Today',
+        category: 'System Design'
+      },
+      {
+        id: 'rec_ml_5',
+        videoId: 'kCc8FmEb1nY',
+        title: 'Let\'s build GPT: from scratch, in code, spelled out',
+        channelTitle: 'Andrej Karpathy',
+        description: 'NanoGPT transformer decoder, self-attention blocks, residual connections, and training a generative model.',
+        thumbnail: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=480',
+        publishedAt: 'Today',
+        category: 'Machine Learning'
       }
     ];
 
-    if (queryType === 'ALL') return allFallbacks;
-    if (queryType === 'DSA') return allFallbacks.filter(f => f.category === 'DSA');
-    if (queryType === 'ML') return allFallbacks.filter(f => f.category === 'Machine Learning');
-    if (queryType === 'SYSTEM_DESIGN') return allFallbacks.filter(f => f.category === 'System Design');
-    return allFallbacks;
+    // Hourly rotation: Rotate the items based on the current hour so each hour shows a new sequence
+    const offset = (currentHour * 2) % masterclassPool.length;
+    const rotated = [
+      ...masterclassPool.slice(offset),
+      ...masterclassPool.slice(0, offset)
+    ];
+
+    if (queryType === 'ALL') return rotated;
+    if (queryType === 'DSA') return rotated.filter(f => f.category === 'DSA');
+    if (queryType === 'ML') return rotated.filter(f => f.category === 'Machine Learning');
+    if (queryType === 'SYSTEM_DESIGN') return rotated.filter(f => f.category === 'System Design');
+    return rotated;
   }
 }

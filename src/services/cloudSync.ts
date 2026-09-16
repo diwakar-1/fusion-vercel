@@ -10,18 +10,8 @@ const CLOUD_DOC_IDS: Record<string, string> = {
   ayush: 'ff808181a09d98f701a0a8863d2016cd'
 };
 
-// Cloud sync endpoint
+// Cloud sync endpoint: Always synchronize to live Vercel Cloud API so Web (local/deployed) and Android share state in real-time
 const getSyncEndpoint = (): string => {
-  if (Capacitor.isNativePlatform()) {
-    // Android App connects directly to deployed Vercel Cloud API
-    return 'https://fusion-vercel.vercel.app/api/sync';
-  }
-  if (typeof window !== 'undefined') {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return '/api/sync';
-    }
-    return `${window.location.origin}/api/sync`;
-  }
   return 'https://fusion-vercel.vercel.app/api/sync';
 };
 

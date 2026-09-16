@@ -200,7 +200,8 @@ export const DashboardOverview: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: 20
+          gap: 20,
+          paddingTop: 6
         }}
       >
         <div>
