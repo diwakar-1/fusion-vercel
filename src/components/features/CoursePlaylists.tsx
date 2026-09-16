@@ -366,58 +366,62 @@ export const CoursePlaylists: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="charcoal-pill-btn"
-            style={{ padding: '10px 22px', fontSize: '0.88rem' }}
-          >
-            <Plus size={16} />
-            <span>Add YouTube Playlist Link</span>
-          </button>
-        </div>
+        {!isAndroidOrMobile && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="charcoal-pill-btn"
+              style={{ padding: '10px 22px', fontSize: '0.88rem' }}
+            >
+              <Plus size={16} />
+              <span>Add YouTube Playlist Link</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Quick Add Playlist Bar (Top-level: For Android / Mobile devices - Zero scrolling needed) */}
+      {/* Quick Add Playlist Bar (Top-level: For Android / Mobile devices - ONLY way to add playlist on Android) */}
       {isAndroidOrMobile && (
         <GlassCard
           style={{
-            padding: '14px 18px',
-            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(254, 242, 242, 0.92) 100%)',
-            border: '1.5px solid rgba(239, 68, 68, 0.25)',
-            boxShadow: '0 4px 16px -2px rgba(239, 68, 68, 0.08)'
+            padding: '16px 18px',
+            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(254, 242, 242, 0.95) 100%)',
+            border: '1.5px solid rgba(239, 68, 68, 0.28)',
+            boxShadow: '0 6px 20px -2px rgba(239, 68, 68, 0.1)',
+            borderRadius: '22px',
+            marginBottom: '16px'
           }}
         >
           <form
             onSubmit={handleCreateCourse}
             style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flexWrap: 'wrap'
+              flexDirection: 'column',
+              gap: 10
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              <YoutubeIcon size={18} color="#EF4444" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#18181B' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <YoutubeIcon size={20} color="#EF4444" />
+              <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#18181B' }}>
                 Add Playlist:
               </span>
             </div>
 
             <input
               type="url"
-              placeholder="Paste YouTube Playlist link (e.g. https://youtube.com/playlist?list=...)"
+              placeholder="Paste YouTube Playlist link (e.g. https://youtu...)"
               value={newUrl}
               onChange={e => setNewUrl(e.target.value)}
               required
               style={{
-                flex: '2 1 240px',
-                padding: '9px 14px',
-                borderRadius: 'var(--radius-pill)',
+                width: '100%',
+                padding: '11px 16px',
+                borderRadius: '16px',
                 border: '1.5px solid rgba(239, 68, 68, 0.3)',
                 fontSize: '0.88rem',
                 outline: 'none',
-                background: '#FFFFFF'
+                background: '#FFFFFF',
+                boxSizing: 'border-box'
               }}
             />
 
@@ -427,49 +431,60 @@ export const CoursePlaylists: React.FC = () => {
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               style={{
-                flex: '1 1 160px',
-                padding: '9px 14px',
-                borderRadius: 'var(--radius-pill)',
+                width: '100%',
+                padding: '11px 16px',
+                borderRadius: '16px',
                 border: '1px solid rgba(0,0,0,0.12)',
                 fontSize: '0.88rem',
                 outline: 'none',
-                background: '#FFFFFF'
+                background: '#FFFFFF',
+                boxSizing: 'border-box'
               }}
             />
 
-            <select
-              value={newSubject}
-              onChange={e => setNewSubject(e.target.value)}
-              style={{
-                padding: '9px 12px',
-                borderRadius: 'var(--radius-pill)',
-                border: '1px solid rgba(0,0,0,0.12)',
-                fontSize: '0.85rem',
-                background: '#FFFFFF',
-                fontWeight: 600
-              }}
-            >
-              <option value="DSA">DSA</option>
-              <option value="Machine Learning">AIML</option>
-              <option value="Operating Systems">OS</option>
-              <option value="Web Dev">Web Dev</option>
-              <option value="System Design">System Design</option>
-            </select>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <select
+                value={newSubject}
+                onChange={e => setNewSubject(e.target.value)}
+                style={{
+                  flex: '0 0 auto',
+                  minWidth: '100px',
+                  padding: '10px 14px',
+                  borderRadius: '16px',
+                  border: '1px solid rgba(0,0,0,0.12)',
+                  fontSize: '0.88rem',
+                  background: '#FFFFFF',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="DSA">DSA</option>
+                <option value="Machine Learning">AIML</option>
+                <option value="Operating Systems">OS</option>
+                <option value="Web Dev">Web Dev</option>
+                <option value="System Design">System Design</option>
+              </select>
 
-            <button
-              type="submit"
-              disabled={!newUrl.trim() || isFetchingPlaylist}
-              className="charcoal-pill-btn"
-              style={{
-                padding: '9px 18px',
-                fontSize: '0.86rem',
-                background: 'linear-gradient(135deg, #1E1E24 0%, #EF4444 100%)',
-                flexShrink: 0
-              }}
-            >
-              <Plus size={15} />
-              <span>{isFetchingPlaylist ? 'Importing...' : 'Add Whole Playlist'}</span>
-            </button>
+              <button
+                type="submit"
+                disabled={!newUrl.trim() || isFetchingPlaylist}
+                className="charcoal-pill-btn"
+                style={{
+                  flex: 1,
+                  padding: '11px 18px',
+                  fontSize: '0.88rem',
+                  background: 'linear-gradient(135deg, #1E1E24 0%, #EF4444 100%)',
+                  borderRadius: 'var(--radius-pill)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6
+                }}
+              >
+                <Plus size={16} />
+                <span>{isFetchingPlaylist ? 'Importing...' : 'Add Whole Playlist'}</span>
+              </button>
+            </div>
           </form>
         </GlassCard>
       )}
@@ -599,14 +614,20 @@ export const CoursePlaylists: React.FC = () => {
               You have removed all custom course playlists. Click <strong>"Add YouTube Playlist Link"</strong> above to import your syllabus, or choose from the curated daily recommendations below!
             </p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="charcoal-pill-btn"
-            style={{ padding: '12px 28px', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: 8 }}
-          >
-            <Plus size={18} />
-            <span>Add YouTube Playlist Link</span>
-          </button>
+          {!isAndroidOrMobile ? (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="charcoal-pill-btn"
+              style={{ padding: '12px 28px', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: 8 }}
+            >
+              <Plus size={18} />
+              <span>Add YouTube Playlist Link</span>
+            </button>
+          ) : (
+            <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              Paste your YouTube link in the <strong>Add Playlist</strong> box above to begin!
+            </div>
+          )}
         </GlassCard>
       ) : (
         <div className="responsive-grid-player" style={{ alignItems: 'start' }}>

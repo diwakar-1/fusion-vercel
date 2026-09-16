@@ -14,10 +14,21 @@ import {
   Skull,
   Settings,
   Smartphone,
-  Save
+  Save,
+  Key,
+  Eye,
+  EyeOff,
+  Bot
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+
+const YoutubeIcon: React.FC<{ size?: number; color?: string }> = ({ size = 18, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17" />
+    <polygon points="10 15 15 12 10 9 10 15" fill={color} />
+  </svg>
+);
 
 const PRESET_STATIC_AVATARS = [
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
@@ -38,7 +49,7 @@ const PRESET_GIF_AVATARS = [
   { name: 'Neon Matrix', url: 'https://media.giphy.com/media/SWoSkN6DxTszqIKEqv/giphy.gif' }
 ];
 
-type SettingsTab = 'profile' | 'vacation' | 'discipline' | 'notifications';
+type SettingsTab = 'profile' | 'keys' | 'vacation' | 'discipline' | 'notifications';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -51,6 +62,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     updateProfile,
     updateProfileAvatar,
     logout,
+    activeFriend,
+    geminiApiKey,
+    setGeminiApiKey,
+    youtubeApiKey,
+    setYoutubeApiKey,
     isVacationPaused,
     toggleVacationMode,
     hasWatchedPlaylistVideoToday,
@@ -76,6 +92,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const [previewAvatar, setPreviewAvatar] = useState(profile.avatar);
   const [isAvatarSaved, setIsAvatarSaved] = useState(false);
 
+  // User-Specific API Keys state
+  const [tempGeminiKey, setTempGeminiKey] = useState(geminiApiKey || '');
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [geminiSaveMsg, setGeminiSaveMsg] = useState<string | null>(null);
+
+  const [tempYtKey, setTempYtKey] = useState(youtubeApiKey || '');
+  const [showYtKey, setShowYtKey] = useState(false);
+  const [ytSaveMsg, setYtSaveMsg] = useState<string | null>(null);
+
   // Vacation state
   const [vacationFeedback, setVacationFeedback] = useState<string | null>(null);
 
@@ -94,7 +119,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     setBranch(profile.branch || '');
     setSemester(profile.semester || '');
     setPreviewAvatar(profile.avatar);
-  }, [profile]);
+    setTempGeminiKey(geminiApiKey || '');
+    setTempYtKey(youtubeApiKey || '');
+  }, [profile, geminiApiKey, youtubeApiKey]);
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
@@ -143,6 +170,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
     updateProfileAvatar(previewAvatar);
     setIsAvatarSaved(true);
     setTimeout(() => setIsAvatarSaved(false), 1800);
+  };
+
+  const handleSaveGeminiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    setGeminiApiKey(tempGeminiKey.trim());
+    setGeminiSaveMsg(`Gemini Key saved for ${profile.name}! Synced across devices.`);
+    setTimeout(() => setGeminiSaveMsg(null), 3500);
+  };
+
+  const handleSaveYtKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    setYoutubeApiKey(tempYtKey.trim());
+    setYtSaveMsg(`YouTube Key saved for ${profile.name}! Synced across devices.`);
+    setTimeout(() => setYtSaveMsg(null), 3500);
   };
 
   const handleToggleVacation = () => {
@@ -302,6 +343,27 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
           >
             <User size={14} />
             <span>Profile & Username</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('keys')}
+            className={`glass-pill ${activeTab === 'keys' ? 'active' : ''}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: activeTab === 'keys' ? '1.5px solid #8B5CF6' : '1px solid rgba(0,0,0,0.08)',
+              background: activeTab === 'keys' ? '#F5F3FF' : '#FFFFFF',
+              color: activeTab === 'keys' ? '#7C3AED' : 'var(--text-secondary)',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <Key size={14} />
+            <span>API Keys (AI & YT)</span>
           </button>
 
           <button
@@ -710,7 +772,242 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             </div>
           )}
 
-          {/* TAB 2: VACATION & STREAK PROTECTION (Relocated from Heatmap) */}
+          {/* TAB 2: API KEYS (AI & YOUTUBE) */}
+          {activeTab === 'keys' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {/* Informational Header Card */}
+              <div
+                style={{
+                  padding: '16px 18px',
+                  borderRadius: '20px',
+                  background: 'linear-gradient(135deg, rgba(245, 243, 255, 0.95) 0%, rgba(238, 242, 255, 0.95) 100%)',
+                  border: '1.5px solid rgba(139, 92, 246, 0.25)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '4px 10px',
+                      borderRadius: 'var(--radius-pill)',
+                      background: 'rgba(139, 92, 246, 0.15)',
+                      color: '#7C3AED'
+                    }}
+                  >
+                    🔐 PRIVATE TO {profile.name.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#10B981' }}>
+                    ✓ Cross-Device Cloud Sync
+                  </span>
+                </div>
+                <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#18181B', margin: '0 0 6px 0' }}>
+                  User-Specific API Credentials
+                </h4>
+                <p style={{ fontSize: '0.82rem', lineHeight: 1.5, color: '#4B5563', margin: 0 }}>
+                  Your Google Gemini AI key and YouTube Data API key are stored privately for <strong>{profile.name}</strong>. They sync across your Android app and Website, and will never overwrite <strong>{activeFriend.name}</strong>'s keys. Your AI chat history also remains completely private.
+                </p>
+              </div>
+
+              {/* Gemini API Key Card */}
+              <div
+                style={{
+                  padding: '18px',
+                  borderRadius: '20px',
+                  background: '#FFFFFF',
+                  border: '1px solid rgba(0, 0, 0, 0.08)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Bot size={18} color="#6366F1" />
+                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      Google Gemini AI API Key
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 800,
+                      padding: '3px 8px',
+                      borderRadius: 'var(--radius-pill)',
+                      background: geminiApiKey ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.12)',
+                      color: geminiApiKey ? '#059669' : '#DC2626'
+                    }}
+                  >
+                    {geminiApiKey ? 'KEY CONFIGURED' : 'KEY MISSING'}
+                  </span>
+                </div>
+
+                <form onSubmit={handleSaveGeminiKey} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showGeminiKey ? 'text' : 'password'}
+                      placeholder="AIzaSy..."
+                      value={tempGeminiKey}
+                      onChange={e => setTempGeminiKey(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 42px 10px 14px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(0,0,0,0.12)',
+                        fontSize: '0.86rem',
+                        background: '#FFFFFF',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowGeminiKey(!showGeminiKey)}
+                      style={{
+                        position: 'absolute',
+                        right: 10,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)'
+                      }}
+                    >
+                      {showGeminiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <a
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '0.76rem', color: '#6366F1', fontWeight: 600, textDecoration: 'none' }}
+                    >
+                      Get free key at Google AI Studio ↗
+                    </a>
+
+                    <button
+                      type="submit"
+                      className="charcoal-pill-btn"
+                      style={{
+                        padding: '8px 18px',
+                        fontSize: '0.82rem',
+                        background: 'linear-gradient(135deg, #1E1E24 0%, #4F46E5 100%)'
+                      }}
+                    >
+                      <Save size={14} />
+                      <span>Save Gemini Key</span>
+                    </button>
+                  </div>
+                </form>
+
+                {geminiSaveMsg && (
+                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#059669', fontWeight: 700 }}>
+                    {geminiSaveMsg}
+                  </div>
+                )}
+              </div>
+
+              {/* YouTube API Key Card */}
+              <div
+                style={{
+                  padding: '18px',
+                  borderRadius: '20px',
+                  background: '#FFFFFF',
+                  border: '1px solid rgba(0, 0, 0, 0.08)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <YoutubeIcon size={18} color="#EF4444" />
+                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      YouTube Data API v3 Key
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 800,
+                      padding: '3px 8px',
+                      borderRadius: 'var(--radius-pill)',
+                      background: youtubeApiKey ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.12)',
+                      color: youtubeApiKey ? '#059669' : '#DC2626'
+                    }}
+                  >
+                    {youtubeApiKey ? 'KEY CONFIGURED' : 'KEY MISSING'}
+                  </span>
+                </div>
+
+                <form onSubmit={handleSaveYtKey} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showYtKey ? 'text' : 'password'}
+                      placeholder="AIzaSy..."
+                      value={tempYtKey}
+                      onChange={e => setTempYtKey(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 42px 10px 14px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(0,0,0,0.12)',
+                        fontSize: '0.86rem',
+                        background: '#FFFFFF',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowYtKey(!showYtKey)}
+                      style={{
+                        position: 'absolute',
+                        right: 10,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)'
+                      }}
+                    >
+                      {showYtKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <a
+                      href="https://console.cloud.google.com/apis/credentials"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '0.76rem', color: '#EF4444', fontWeight: 600, textDecoration: 'none' }}
+                    >
+                      Get YouTube key in Google Cloud Console ↗
+                    </a>
+
+                    <button
+                      type="submit"
+                      className="charcoal-pill-btn"
+                      style={{
+                        padding: '8px 18px',
+                        fontSize: '0.82rem',
+                        background: 'linear-gradient(135deg, #1E1E24 0%, #EF4444 100%)'
+                      }}
+                    >
+                      <Save size={14} />
+                      <span>Save YouTube Key</span>
+                    </button>
+                  </div>
+                </form>
+
+                {ytSaveMsg && (
+                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#059669', fontWeight: 700 }}>
+                    {ytSaveMsg}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: VACATION & STREAK PROTECTION (Relocated from Heatmap) */}
           {activeTab === 'vacation' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* The Exact Vacation Mode Card from Image 3 */}
@@ -892,7 +1189,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             </div>
           )}
 
-          {/* TAB 3: TASK DISCIPLINE PROTOCOL (Relocated from Habits & Goals) */}
+          {/* TAB 4: TASK DISCIPLINE PROTOCOL (Relocated from Habits & Goals) */}
           {activeTab === 'discipline' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* The Exact Card from Image 2 */}
@@ -1012,7 +1309,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
             </div>
           )}
 
-          {/* TAB 4: ANDROID BACKGROUND NOTIFICATIONS */}
+          {/* TAB 5: ANDROID BACKGROUND NOTIFICATIONS */}
           {activeTab === 'notifications' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div
@@ -1129,7 +1426,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
                     />
                   </label>
 
-                  {/* Toggle 3: Mute In-App Popups (User explicitly requested: "Notification option that give notification in background also not in app") */}
+                  {/* Toggle 3: Mute In-App Popups */}
                   <label
                     style={{
                       display: 'flex',

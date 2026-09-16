@@ -10,16 +10,16 @@ export class YouTubeService {
   private static KEY_STORAGE_PREFIX = 'fusion_yt_api_key_';
 
   public static getApiKey(userName: string = 'Diwakar'): string {
-    const userKey = localStorage.getItem(`${this.KEY_STORAGE_PREFIX}${userName.toLowerCase()}`);
-    if (userKey) return userKey.trim();
-    const globalKey = localStorage.getItem('fusion_youtube_api_key');
-    return globalKey ? globalKey.trim() : '';
+    const clean = (userName || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    const userKey = localStorage.getItem(`${this.KEY_STORAGE_PREFIX}${clean}`);
+    if (userKey && userKey.trim()) return userKey.trim();
+    return '';
   }
 
   public static setApiKey(userName: string = 'Diwakar', key: string): void {
+    const cleanUser = (userName || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
     const clean = key.trim();
-    localStorage.setItem(`${this.KEY_STORAGE_PREFIX}${userName.toLowerCase()}`, clean);
-    localStorage.setItem('fusion_youtube_api_key', clean);
+    localStorage.setItem(`${this.KEY_STORAGE_PREFIX}${cleanUser}`, clean);
   }
 
   public static hasApiKey(userName: string = 'Diwakar'): boolean {

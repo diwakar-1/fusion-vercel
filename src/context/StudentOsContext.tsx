@@ -271,6 +271,64 @@ const StudentOsContext = createContext<StudentOsContextType | undefined>(undefin
 // Peer-to-peer Broadcast Channel for real-time Duo sync between Diwakar & Ayush
 const broadcastChannel = typeof window !== 'undefined' ? new BroadcastChannel('FUSION_DUO_SYNC') : null;
 
+// User-specific private AI chat helper: "there chat with ai will be different"
+const getInitialChatMessages = (user: string): ChatMessage[] => {
+  const clean = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+  try {
+    const saved = localStorage.getItem(`fusion_chat_messages_${clean}`);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [
+    {
+      id: 'msg_welcome',
+      sender: 'assistant',
+      model: 'FUSE (Gemini)',
+      text: `Hey ${user}! I am **FUSE**—your private AI study copilot powered by Google Gemini. I have complete access to your study schedules, YouTube playlists, DSA telemetry, and notes. How can I help you dominate today's session?`,
+      timestamp: '09:00 AM'
+    }
+  ];
+};
+
+// Shared YouTube Playlist Merger: "they both different upload they can only see YT playlist"
+const mergePlaylists = (existing: VideoCourse[], ...lists: (VideoCourse[] | undefined)[]): VideoCourse[] => {
+  const map = new Map<string, VideoCourse>();
+  const getKey = (c: VideoCourse) => {
+    const ytId = YouTubeService.extractPlaylistId(c.youtubeUrl || '') || YouTubeService.extractVideoId(c.youtubeUrl || '');
+    return ytId || c.id || (c.title ? c.title.toLowerCase().trim() : '');
+  };
+
+  if (Array.isArray(existing)) {
+    existing.forEach(c => {
+      const k = getKey(c);
+      if (k) map.set(k, c);
+    });
+  }
+
+  lists.forEach(list => {
+    if (Array.isArray(list)) {
+      list.forEach(c => {
+        const k = getKey(c);
+        if (!k) return;
+        if (!map.has(k)) {
+          map.set(k, c);
+        } else {
+          const prev = map.get(k)!;
+          const prevLecs = prev.lectures?.length || 0;
+          const newLecs = c.lectures?.length || 0;
+          if (newLecs > prevLecs) {
+            map.set(k, { ...prev, ...c });
+          }
+        }
+      });
+    }
+  });
+
+  return Array.from(map.values());
+};
+
 export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation
   const [activeModule, setActiveModule] = useState<string>('dashboard');
@@ -538,16 +596,10 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Backend connection flag
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
 
-  // Chat messages with FUSE
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: 'msg_welcome',
-      sender: 'assistant',
-      model: 'FUSE (Gemini)',
-      text: 'Hey Diwakar & Ayush! I am **FUSE**—your private AI study copilot powered by Google Gemini. I have complete access to your study schedules, YouTube playlists, DSA telemetry, and notes. How can I help you dominate today\'s session?',
-      timestamp: '09:00 AM'
-    }
-  ]);
+  // Chat messages with FUSE (Private per user: Diwakar vs Ayush)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    return getInitialChatMessages(currentUser);
+  });
 
   // Streak verification (During vacation pause, user must watch at least 1 playlist video to protect streak)
   const [userWatchedVideoToday, setUserWatchedVideoToday] = useState<boolean>(() => {
@@ -811,10 +863,15 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setStudySessions(remoteData.studyLogs);
             try { localStorage.setItem('fusion_study_sessions', JSON.stringify(remoteData.studyLogs)); } catch {}
           }
-          // Sync playlists/courses between Android and Web
-          if (Array.isArray(remoteData.courses) && remoteData.courses.length > 0) {
-            setCourses(remoteData.courses);
-            try { localStorage.setItem('fusion_courses', JSON.stringify(remoteData.courses)); } catch {}
+          // Shared YouTube Playlist Engine: "they both different upload they can only see YT playlist"
+          const allPartnerCourses = Array.isArray(partnerData?.courses) ? partnerData.courses : [];
+          const allRemoteCourses = Array.isArray(remoteData?.courses) ? remoteData.courses : [];
+          if (allRemoteCourses.length > 0 || allPartnerCourses.length > 0) {
+            setCourses(prev => {
+              const merged = mergePlaylists(prev, allRemoteCourses, allPartnerCourses);
+              try { localStorage.setItem('fusion_courses', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
           }
           // Sync Coding & PDF Question Sheets
           if (Array.isArray(remoteData.pdfQuestionSheets) && remoteData.pdfQuestionSheets.length > 0) {
@@ -836,7 +893,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setMlMilestones(remoteData.mlMilestones);
             try { localStorage.setItem('fusion_ml_milestones', JSON.stringify(remoteData.mlMilestones)); } catch {}
           }
-          // Sync API keys
+          // Sync API keys strictly for current user
           if (remoteData.geminiApiKey) {
             setGeminiApiKeyState(remoteData.geminiApiKey);
             GeminiService.setApiKey(currentUser, remoteData.geminiApiKey);
@@ -844,6 +901,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (remoteData.youtubeApiKey) {
             setYoutubeApiKeyState(remoteData.youtubeApiKey);
             YouTubeService.setApiKey(currentUser, remoteData.youtubeApiKey);
+          }
+          // Sync user's private FUSE AI chat history
+          if (Array.isArray(remoteData.aiChatMessages) && remoteData.aiChatMessages.length > 0) {
+            setChatMessages(remoteData.aiChatMessages);
+            try {
+              localStorage.setItem(`fusion_chat_messages_${currentUser.toLowerCase()}`, JSON.stringify(remoteData.aiChatMessages));
+            } catch {}
           }
           // Sync Vacation Mode
           if (remoteData.isVacationPaused !== undefined) {
@@ -884,6 +948,14 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               streakDays: partnerData.profile.streakDays ?? prev.streakDays,
               todayStudiedMinutes: partnerData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes
             }));
+          }
+          // Shared YouTube Playlists added by Partner: "they both different upload they can only see YT playlist"
+          if (Array.isArray(partnerData.courses) && partnerData.courses.length > 0) {
+            setCourses(prev => {
+              const merged = mergePlaylists(prev, partnerData.courses);
+              try { localStorage.setItem('fusion_courses', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
           }
           // Cross-device Partner Chat Sync
           if (Array.isArray(partnerData.partnerChatMessages) && partnerData.partnerChatMessages.length > 0) {
@@ -927,6 +999,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       mlMilestones,
       geminiApiKey: geminiApiKey || undefined,
       youtubeApiKey: youtubeApiKey || undefined,
+      aiChatMessages: chatMessages,
       studyLogs: studySessions,
       partnerChatMessages,
       isVacationPaused,
@@ -1007,6 +1080,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const targetProfile = user === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
       setProfile(targetProfile);
       setGeminiApiKeyState(GeminiService.getApiKey(user));
+      setYoutubeApiKeyState(YouTubeService.getApiKey(user));
+      setChatMessages(getInitialChatMessages(user));
       confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
       return true;
     }
@@ -1736,7 +1811,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setChatMessages(prev => [...prev, userMsg]);
+    setChatMessages(prev => {
+      const next = [...prev, userMsg];
+      try {
+        localStorage.setItem(`fusion_chat_messages_${currentUser.toLowerCase()}`, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     setIsAiThinking(true);
 
     const systemPrompt = `You are FUSE, the supreme AI Engineering & Algorithm Mentor built exclusively for FUSION—the private co-study ecosystem of Diwakar and Ayush.
@@ -1775,7 +1856,13 @@ INSTRUCTIONS:
         text: reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-      setChatMessages(prev => [...prev, aiMsg]);
+      setChatMessages(prev => {
+        const next = [...prev, aiMsg];
+        try {
+          localStorage.setItem(`fusion_chat_messages_${currentUser.toLowerCase()}`, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
     } catch (err: any) {
       console.error('[FUSE Chat Error]', err);
       const aiMsg: ChatMessage = {
@@ -1785,13 +1872,25 @@ INSTRUCTIONS:
         text: `**FUSE AI Notice**: ${err.message}\n\n*To activate your dedicated Gemini model, click the API Key button in the top right of this chat and paste your Google Gemini API Key from Google AI Studio.*`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
-      setChatMessages(prev => [...prev, aiMsg]);
+      setChatMessages(prev => {
+        const next = [...prev, aiMsg];
+        try {
+          localStorage.setItem(`fusion_chat_messages_${currentUser.toLowerCase()}`, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
     } finally {
       setIsAiThinking(false);
     }
   };
 
-  const clearChat = () => setChatMessages([]);
+  const clearChat = () => {
+    const welcome = getInitialChatMessages(currentUser);
+    setChatMessages(welcome);
+    try {
+      localStorage.setItem(`fusion_chat_messages_${currentUser.toLowerCase()}`, JSON.stringify(welcome));
+    } catch {}
+  };
 
   // Task Punishment & Catastrophic Progress Deletion Logic
   const enforceTaskAccountability = async (manual: boolean = false): Promise<{ punished: boolean; message: string; wiped: boolean }> => {

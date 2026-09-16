@@ -38,6 +38,7 @@ export interface SyncPayload {
   mlMilestones?: any[];     // Machine Learning Milestones synced
   geminiApiKey?: string;    // API keys synced so Android keys appear on Web
   youtubeApiKey?: string;
+  aiChatMessages?: any[];   // Private FUSE AI chat history per user
   activeTimerState?: any;
   studyLogs?: any[];
   completedProblemIds?: string[];

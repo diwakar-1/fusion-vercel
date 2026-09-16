@@ -11,20 +11,19 @@ export interface GeminiChatMessage {
 
 export class GeminiService {
   private static getStorageKey(userName: string = 'Diwakar'): string {
-    return `fusion_gemini_api_key_${userName.toLowerCase()}`;
+    const clean = (userName || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    return `fusion_gemini_api_key_${clean}`;
   }
 
   public static getApiKey(userName: string = 'Diwakar'): string {
     const userKey = localStorage.getItem(this.getStorageKey(userName));
     if (userKey && userKey.trim()) return userKey.trim();
-    // Fallback to global key
-    return localStorage.getItem('fusion_gemini_api_key') || '';
+    return '';
   }
 
   public static setApiKey(userName: string, key: string): void {
     const cleanKey = key.trim();
     localStorage.setItem(this.getStorageKey(userName), cleanKey);
-    localStorage.setItem('fusion_gemini_api_key', cleanKey);
   }
 
   public static removeApiKey(userName: string): void {
