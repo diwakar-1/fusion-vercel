@@ -176,8 +176,8 @@ const DEFAULT_DIWAKAR_PROFILE: StudentProfile = {
   dsaGoalHours: 2.0,
   mlGoalHours: 2.0,
   todayStudiedMinutes: 0,
-  entryCode: 'ML1718',
-  shortCode: 'ML1718'
+  entryCode: import.meta.env.VITE_DIWAKAR_CODE || '',
+  shortCode: import.meta.env.VITE_DIWAKAR_CODE || ''
 };
 
 const DEFAULT_AYUSH_PROFILE: StudentProfile = {
@@ -781,8 +781,9 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let isValid = false;
 
     if (user === 'Diwakar') {
-      // User Diwakar's password is ML1718 (case-insensitive)
-      isValid = clean.toUpperCase() === 'ML1718';
+      // Password loaded from env variable (never hardcoded in source)
+      const diwakarCode = (import.meta.env.VITE_DIWAKAR_CODE || '').toUpperCase();
+      isValid = diwakarCode !== '' && clean.toUpperCase() === diwakarCode;
     } else {
       // User Ayush: checks permanent password created by Ayush
       const storedAyushPassword = localStorage.getItem('fusion_ayush_password');

@@ -43,7 +43,8 @@ export const EntryCodeGate: React.FC = () => {
     // Pre-verify password to trigger the UNLOCKED.gif animation on success
     let isMatch = false;
     if (selectedUser === 'Diwakar') {
-      isMatch = clean.toUpperCase() === 'ML1718';
+      const diwakarCode = (import.meta.env.VITE_DIWAKAR_CODE || '').toUpperCase();
+      isMatch = diwakarCode !== '' && clean.toUpperCase() === diwakarCode;
     } else {
       const stored = localStorage.getItem('fusion_ayush_password');
       isMatch = stored ? clean === stored.trim() : false;
