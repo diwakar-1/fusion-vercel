@@ -281,6 +281,40 @@ button, input, textarea, select, a, [role="button"] {
    Supports 360px smartphones, foldables, tablets & desktops
    ========================================================= */
 
+/* =========================================================
+   NAVBAR — Desktop Base Styles (all screens above 768px)
+   ========================================================= */
+.responsive-navbar {
+  position: sticky;
+  top: 12px;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  width: calc(100% - 48px);
+  max-width: 1400px;
+  margin: 12px auto 20px auto;
+  height: 60px;
+  min-height: 60px;
+  padding: 0 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 8px 28px -6px rgba(25, 30, 45, 0.10), inset 0 1px 2px rgba(255, 255, 255, 1);
+  box-sizing: border-box;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+/* Hide the tiny mobile-only pulse dot on desktop */
+.sync-dot-mobile-only {
+  display: none;
+}
+
 /* Main content wrapper with safe bottom dock spacing */
 .responsive-main-container {
   max-width: 1440px;
