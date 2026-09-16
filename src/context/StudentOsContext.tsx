@@ -580,6 +580,17 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ? hasWatchedPlaylistVideoToday
     : dailyTasks.some(t => t.isCoreStreakTask && t.completed);
 
+  // Auto-increment streak when core tasks completed today (once per calendar day only)
+  useEffect(() => {
+    if (!isAuthenticated || !isStreakProtectedToday) return;
+    const today = new Date().toISOString().split('T')[0];
+    const lastStreakDate = localStorage.getItem(`fusion_last_streak_date_${currentUser}`);
+    if (lastStreakDate === today) return; // Already counted today
+    // New day with tasks done — increment streak!
+    localStorage.setItem(`fusion_last_streak_date_${currentUser}`, today);
+    setProfile(p => ({ ...p, streakDays: Math.max(1, p.streakDays + 1) }));
+  }, [isAuthenticated, isStreakProtectedToday, currentUser]);
+
   // Heatmap generation from actual study sessions
   const generateHeatmap = useCallback(() => {
     const days: HeatmapDay[] = [];

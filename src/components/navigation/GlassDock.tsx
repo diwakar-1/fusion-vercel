@@ -43,14 +43,14 @@ export const GlassDock: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              padding: isActive ? '9px 18px' : '9px 12px',
+              padding: isActive ? '8px 16px' : '8px 12px',
               borderRadius: 'var(--radius-pill)',
-              border: isActive ? '1px solid rgba(255, 255, 255, 0.22)' : '1px solid transparent',
-              background: isActive ? 'linear-gradient(135deg, #18181B 0%, #27272A 100%)' : 'transparent',
-              color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
+              border: isActive ? '1.5px solid rgba(99, 102, 241, 0.35)' : '1.5px solid transparent',
+              background: isActive ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.14) 0%, rgba(139, 92, 246, 0.18) 100%)' : 'transparent',
+              color: isActive ? '#4338CA' : 'var(--text-secondary)',
               cursor: 'pointer',
               transition: 'all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-              boxShadow: isActive ? '0 6px 18px rgba(24, 24, 27, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.15)' : 'none',
+              boxShadow: isActive ? '0 4px 16px rgba(99, 102, 241, 0.18), inset 0 1px 1px rgba(255, 255, 255, 0.8)' : 'none',
               flexShrink: 0
             }}
           >
@@ -61,11 +61,11 @@ export const GlassDock: React.FC = () => {
                 width: 28,
                 height: 28,
                 objectFit: 'contain',
-                transform: isActive ? 'scale(1.15)' : 'scale(1)',
+                transform: isActive ? 'scale(1.12)' : 'scale(1)',
                 transition: 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
                 filter: isActive
-                  ? 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)) brightness(1.1)'
-                  : 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.08))'
+                  ? 'drop-shadow(0 2px 6px rgba(99, 102, 241, 0.35))'
+                  : 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08))'
               }}
               onError={(e) => {
                 // If GIF doesn't load, fallback to standard styling

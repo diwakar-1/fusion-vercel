@@ -44,7 +44,8 @@ export const DashboardOverview: React.FC = () => {
     pdfQuestionSheets,
     dailyTasks,
     toggleDailyTask,
-    isBackendConnected
+    isBackendConnected,
+    isStreakProtectedToday
   } = useStudentOs();
 
   const [celebration, setCelebration] = useState<{
@@ -354,8 +355,8 @@ export const DashboardOverview: React.FC = () => {
           <div style={{ fontFamily: "var(--font-dashboard), 'Nunito', sans-serif", fontSize: '2.5rem', fontWeight: 700, color: '#18181B' }}>
             {streakCount} Days
           </div>
-          <span style={{ fontSize: '0.8rem', color: streakCount === 0 ? '#64748B' : '#15803D', fontWeight: 700 }}>
-            {streakCount === 0 ? 'Streak counter paused (Awaiting start signal)' : 'Protected by daily challenge quests'}
+          <span style={{ fontSize: '0.8rem', color: isStreakProtectedToday ? '#15803D' : '#EA580C', fontWeight: 700 }}>
+            {isStreakProtectedToday ? '🔥 Protected for today' : '⚡ Complete daily challenge to increase streak'}
           </span>
         </GlassCard>
         )}
