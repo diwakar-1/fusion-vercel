@@ -595,24 +595,29 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const generateHeatmap = useCallback(() => {
     const days: HeatmapDay[] = [];
     const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
     for (let i = 89; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
       const dayMinutes = studySessions
-        .filter(s => s.timestamp.startsWith(dateStr) && (s.user_name?.toLowerCase() === currentUser.toLowerCase()))
-        .reduce((sum, s) => sum + s.duration_minutes, 0);
+        .filter(s => s.timestamp?.startsWith(dateStr) && (s.user_name?.toLowerCase() === currentUser.toLowerCase() || (s as any).userName?.toLowerCase() === currentUser.toLowerCase()))
+        .reduce((sum, s) => sum + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
+
+      // Include active study minutes for today
+      const effectiveMinutes = dateStr === todayStr ? Math.max(dayMinutes, profile.todayStudiedMinutes || 0) : dayMinutes;
 
       let intensity: 0 | 1 | 2 | 3 | 4 = 0;
-      if (dayMinutes >= 180) intensity = 4;
-      else if (dayMinutes >= 120) intensity = 3;
-      else if (dayMinutes >= 60) intensity = 2;
-      else if (dayMinutes > 0) intensity = 1;
+      if (effectiveMinutes >= 180) intensity = 4;
+      else if (effectiveMinutes >= 120) intensity = 3;
+      else if (effectiveMinutes >= 60) intensity = 2;
+      else if (effectiveMinutes > 0) intensity = 1;
 
-      days.push({ date: dateStr, count: dayMinutes, intensity });
+      days.push({ date: dateStr, count: effectiveMinutes, intensity });
     }
     return days;
-  }, [studySessions, currentUser]);
+  }, [studySessions, currentUser, profile.todayStudiedMinutes]);
 
   const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>(generateHeatmap);
 
