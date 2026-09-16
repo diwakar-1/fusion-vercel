@@ -14,8 +14,7 @@
 
 A fully native Android APK (`FUSION.apk`) built with **Capacitor** — syncs with the web in real-time.
 
-- Download: `FUSION.apk` (in repo root)
-- Package: `com.fusion.studyapp`
+- Download: `FUSION.apk` release
 - Features: Native push notifications, real-time cloud sync, local storage persistence
 
 ---
@@ -86,10 +85,10 @@ Every 1 second bi-directional sync covers:
 
 ## 🔐 Authentication
 
-| User | Password | Notes |
-|------|----------|-------|
-| Diwakar | ML1718 | Fixed permanent password |
-| Ayush | (self-set) | Creates own password on first login |
+| User | Password |
+|------|----------|
+| Diwakar | *** |
+| Ayush | *** |
 
 ---
 
