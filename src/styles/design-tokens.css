@@ -18,24 +18,24 @@
   --mesh-cyan: #C7EEF7;
   --mesh-cyan-glow: rgba(199, 238, 247, 0.5);
 
-  /* Frosted Glass Surfaces */
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-bg-subtle: rgba(255, 255, 255, 0.45);
-  --glass-bg-active: rgba(255, 255, 255, 0.88);
-  --glass-bg-elevated: rgba(255, 255, 255, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.75);
-  --glass-border-subtle: rgba(255, 255, 255, 0.4);
+  /* Frosted Glass Surfaces - Optimized for 60 FPS */
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-bg-subtle: rgba(255, 255, 255, 0.65);
+  --glass-bg-active: rgba(255, 255, 255, 0.94);
+  --glass-bg-elevated: rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-border-subtle: rgba(255, 255, 255, 0.5);
   --glass-border-dark: rgba(30, 30, 36, 0.08);
-  --glass-inner-highlight: inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
-  --glass-blur: blur(24px) saturate(180%);
-  --glass-blur-sm: blur(12px) saturate(150%);
-  --glass-blur-lg: blur(36px) saturate(200%);
+  --glass-inner-highlight: inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
+  --glass-blur: blur(12px);
+  --glass-blur-sm: blur(6px);
+  --glass-blur-lg: blur(16px);
 
   /* Elevation Shadows */
-  --shadow-glass: 0 10px 30px -5px rgba(25, 30, 45, 0.08), 0 4px 12px -2px rgba(25, 30, 45, 0.04);
-  --shadow-elevated: 0 20px 40px -10px rgba(25, 30, 45, 0.12), 0 6px 16px -3px rgba(25, 30, 45, 0.06);
-  --shadow-glowing-orange: 0 14px 28px -4px rgba(255, 122, 69, 0.35);
-  --shadow-glowing-cyan: 0 14px 28px -4px rgba(56, 189, 248, 0.35);
+  --shadow-glass: 0 8px 24px -4px rgba(25, 30, 45, 0.06), 0 2px 8px -2px rgba(25, 30, 45, 0.04);
+  --shadow-elevated: 0 14px 32px -6px rgba(25, 30, 45, 0.1), 0 4px 12px -2px rgba(25, 30, 45, 0.05);
+  --shadow-glowing-orange: 0 10px 24px -4px rgba(255, 122, 69, 0.35);
+  --shadow-glowing-cyan: 0 10px 24px -4px rgba(56, 189, 248, 0.35);
 
   /* Solid & Accent Colors */
   --charcoal-pill: #1E1E24;
@@ -75,22 +75,33 @@
   --radius-pill: 9999px;
 
   /* Transitions */
-  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-spring: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --transition-fast: 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 
-  /* Solo Leveling / Cyber-Dark Analytics HUD (Image 2) */
+  /* Solo Leveling / Cyber-Dark Analytics HUD */
   --hud-bg-main: #0B0A14;
-  --hud-card-bg: rgba(20, 18, 36, 0.85);
-  --hud-card-elevated: rgba(28, 25, 52, 0.9);
+  --hud-card-bg: rgba(20, 18, 36, 0.88);
+  --hud-card-elevated: rgba(28, 25, 52, 0.92);
   --hud-border: rgba(168, 85, 247, 0.22);
   --hud-border-glow: rgba(217, 70, 239, 0.45);
   --hud-neon-purple: #C084FC;
   --hud-neon-magenta: #E879F9;
   --hud-neon-pink: #F472B6;
-  --hud-glow-purple: 0 0 24px rgba(192, 132, 252, 0.35);
-  --hud-glow-bar: 0 0 14px rgba(232, 121, 249, 0.6);
+  --hud-glow-purple: 0 0 20px rgba(192, 132, 252, 0.3);
+  --hud-glow-bar: 0 0 12px rgba(232, 121, 249, 0.5);
   --hud-text-primary: #F8FAFC;
   --hud-text-secondary: #CBD5E1;
   --hud-text-muted: #94A3B8;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --glass-blur: blur(6px);
+    --glass-blur-sm: blur(4px);
+    --glass-blur-lg: blur(8px);
+    --glass-bg: rgba(255, 255, 255, 0.9);
+    --glass-bg-subtle: rgba(255, 255, 255, 0.75);
+    --glass-bg-active: rgba(255, 255, 255, 0.98);
+  }
 }

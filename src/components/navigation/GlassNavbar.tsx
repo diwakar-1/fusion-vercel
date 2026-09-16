@@ -51,6 +51,11 @@ export const GlassNavbar: React.FC = () => {
 
       {/* Right: Gamified Stats, AI Assistant & Profile */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {/* Live Cloud Sync Indicator */}
+        <div className="sync-badge-pulse" title="Cloud Sync Active: 1-second real-time sync with Android & Web">
+          <span className="sync-dot" />
+          <span>Sync</span>
+        </div>
         {/* Streak Badge */}
         <div
           className="glass-pill nav-badge-compact"

@@ -1,6 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import confetti from 'canvas-confetti';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { StatusBar, Style as StatusBarStyle } from '@capacitor/status-bar';
 import { api } from '../services/api';
+import { cloudSync } from '../services/cloudSync';
 import { GeminiService } from '../services/gemini';
 import { YouTubeService } from '../services/youtube';
 import {
@@ -693,6 +697,65 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }, 10000);
     return () => clearInterval(interval);
   }, [currentUser, isTimerRunning, timerSubject, profile.todayStudiedMinutes]);
+
+  // Real-Time 1-Second Bi-Directional Cloud State Synchronizer (Web <-> Android App)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const stopSync = cloudSync.startAutoSync(
+      () => currentUser,
+      (remoteData, partnerData) => {
+        if (remoteData) {
+          if (remoteData.profile) {
+            setProfile(prev => ({
+              ...prev,
+              streakDays: remoteData.profile.streakDays ?? prev.streakDays,
+              totalXp: Math.max(prev.totalXp, remoteData.profile.totalXp ?? prev.totalXp),
+              level: remoteData.profile.level ?? prev.level,
+              todayStudiedMinutes: Math.max(prev.todayStudiedMinutes, remoteData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes)
+            }));
+          }
+          if (Array.isArray(remoteData.dailyTasks) && remoteData.dailyTasks.length > 0) {
+            setDailyTasks(remoteData.dailyTasks);
+          }
+          if (Array.isArray(remoteData.notes)) {
+            setNotes(remoteData.notes);
+          }
+          if (remoteData.timetableSchedule) {
+            setTimetableSchedule(remoteData.timetableSchedule);
+          }
+          if (Array.isArray(remoteData.dsaTopics) && remoteData.dsaTopics.length > 0) {
+            setDsaProblems(remoteData.dsaTopics);
+          }
+        }
+
+        if (partnerData && partnerData.profile) {
+          setActiveFriend(prev => ({
+            ...prev,
+            totalXp: partnerData.profile.totalXp ?? prev.totalXp,
+            streakDays: partnerData.profile.streakDays ?? prev.streakDays,
+            todayStudiedMinutes: partnerData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes
+          }));
+        }
+      }
+    );
+
+    return () => stopSync();
+  }, [isAuthenticated, currentUser]);
+
+  // Push local updates to Cloud Sync API on state mutation
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    cloudSync.pushState(currentUser, {
+      profile,
+      dailyTasks,
+      dsaTopics: dsaProblems,
+      notes,
+      timetableSchedule,
+      studyLogs: studySessions,
+      updatedAt: Date.now()
+    });
+  }, [isAuthenticated, currentUser, profile.totalXp, profile.streakDays, dailyTasks, dsaProblems, notes, timetableSchedule, studySessions]);
 
   // Ayush Permanent Password Management
   const isAyushPasswordSet = (): boolean => {
@@ -1693,7 +1756,7 @@ INSTRUCTIONS:
     } catch {}
   }, []);
 
-  const triggerManualStreakReminder = useCallback(() => {
+  const triggerManualStreakReminder = useCallback(async () => {
     const pendingTasks = dailyTasks.filter(t => !t.completed);
     const pendingCount = pendingTasks.length;
     const coreTasksPending = dailyTasks.filter(t => t.isCoreStreakTask && !t.completed).length;
@@ -1709,8 +1772,28 @@ INSTRUCTIONS:
       message = `Awesome work! All daily tasks are finished today. Current streak is locked at ${profile.streakDays} days!`;
     }
 
-    // Web Notification API
-    if (typeof window !== 'undefined' && 'Notification' in window) {
+    // Native or Web Notification
+    if (Capacitor.isNativePlatform()) {
+      // Use Capacitor Local Notifications on Android
+      try {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title,
+              body: message,
+              id: Date.now(),
+              schedule: { at: new Date(Date.now() + 500) },
+              smallIcon: 'ic_stat_fusion',
+              largeIcon: 'ic_launcher',
+              sound: 'default',
+              channelId: 'fusion_reminders',
+              extra: { type: 'streak_reminder' }
+            }
+          ]
+        });
+      } catch {}
+    } else if (typeof window !== 'undefined' && 'Notification' in window) {
+      // Web Notification API fallback
       if (Notification.permission === 'granted') {
         try {
           new Notification(title, {
@@ -1743,9 +1826,70 @@ INSTRUCTIONS:
     }, 8000);
   }, [dailyTasks, profile.streakDays, playNotificationChime]);
 
+  // Request notification permission on native platforms & create channel
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      const initNative = async () => {
+        try {
+          await LocalNotifications.requestPermissions();
+          await LocalNotifications.createChannel({
+            id: 'fusion_reminders',
+            name: 'FUSION Reminders',
+            description: 'Streak and task reminder notifications',
+            importance: 5,
+            visibility: 1,
+            vibration: true,
+            sound: 'default'
+          });
+        } catch {}
+        try {
+          StatusBar.setStyle({ style: StatusBarStyle.Dark });
+          StatusBar.setBackgroundColor({ color: '#1E1E24' });
+        } catch {}
+      };
+      initNative();
+    }
+  }, []);
+
   // Recurring 30-minute interval timer for streak & task reminders
   useEffect(() => {
     const THIRTY_MINUTES = 30 * 60 * 1000;
+
+    // On native, also schedule repeating local notifications for reliability
+    if (Capacitor.isNativePlatform()) {
+      const scheduleNativeReminders = async () => {
+        try {
+          // Cancel previous scheduled reminders to avoid duplicates
+          const pending = await LocalNotifications.getPending();
+          const reminderIds = pending.notifications
+            .filter(n => n.extra?.type === 'recurring_streak')
+            .map(n => ({ id: n.id }));
+          if (reminderIds.length > 0) {
+            await LocalNotifications.cancel({ notifications: reminderIds });
+          }
+
+          // Schedule next 12 hours of 30-min reminders (24 notifications)
+          const notifications = [];
+          for (let i = 1; i <= 24; i++) {
+            notifications.push({
+              title: '🔥 FUSION Streak Check',
+              body: 'Time to check your daily tasks and protect your streak!',
+              id: 90000 + i,
+              schedule: { at: new Date(Date.now() + THIRTY_MINUTES * i) },
+              smallIcon: 'ic_stat_fusion',
+              largeIcon: 'ic_launcher',
+              sound: 'default',
+              channelId: 'fusion_reminders',
+              extra: { type: 'recurring_streak' }
+            });
+          }
+          await LocalNotifications.schedule({ notifications });
+        } catch {}
+      };
+      scheduleNativeReminders();
+    }
+
+    // In-app interval works on both web and native (when app is in foreground)
     const interval = setInterval(() => {
       triggerManualStreakReminder();
     }, THIRTY_MINUTES);
