@@ -58,7 +58,7 @@ const StudentOsApp: React.FC = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', position: 'relative', overflowX: 'clip' }}>
+    <div style={{ minHeight: '100vh', position: 'relative' }}>
       {/* Ambient Mesh Background Canvas */}
       <MeshBackground />
 

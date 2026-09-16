@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { triggerSparkleConfetti } from '../../utils/confettiHelper';
 import { useStudentOs } from '../../context/StudentOsContext';
 import { GlassCard } from '../common/GlassCard';
@@ -230,9 +231,9 @@ export const DashboardOverview: React.FC = () => {
                 borderRadius: 16,
                 fontSize: '0.74rem',
                 fontWeight: 700,
-                background: isBackendConnected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-                color: isBackendConnected ? '#059669' : '#D97706',
-                border: `1px solid ${isBackendConnected ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`
+                background: (Capacitor.isNativePlatform() || isBackendConnected) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                color: (Capacitor.isNativePlatform() || isBackendConnected) ? '#059669' : '#D97706',
+                border: `1px solid ${(Capacitor.isNativePlatform() || isBackendConnected) ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`
               }}
             >
               <span
@@ -240,10 +241,14 @@ export const DashboardOverview: React.FC = () => {
                   width: 7,
                   height: 7,
                   borderRadius: '50%',
-                  background: isBackendConnected ? '#10B981' : '#F59E0B'
+                  background: (Capacitor.isNativePlatform() || isBackendConnected) ? '#10B981' : '#F59E0B'
                 }}
               />
-              {isBackendConnected ? 'Live Real-Time DB Connected' : 'Syncing with Port 8000...'}
+              {Capacitor.isNativePlatform()
+                ? 'Cloud Sync Active'
+                : isBackendConnected
+                  ? 'Live Real-Time DB Connected'
+                  : 'Connecting to Cloud...'}
             </span>
 
             {/* Punishment / Strike Alert Pill */}
