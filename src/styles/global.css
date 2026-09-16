@@ -520,6 +520,52 @@ button, input, textarea, select, a, [role="button"] {
   }
 }
 
+/* Responsive Analytics Layout */
+.responsive-analytics-row3 {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 860px) {
+  .responsive-analytics-row3 {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+}
+
+.analytics-card {
+  padding: 30px;
+}
+
+@media (max-width: 640px) {
+  .analytics-card {
+    padding: 18px 16px !important;
+    border-radius: 22px !important;
+  }
+
+  .analytics-header-title {
+    font-size: 1.85rem !important;
+  }
+
+  .analytics-avatar-wrapper {
+    width: 60px !important;
+    height: 60px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .analytics-session-metrics {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    padding: 10px 12px !important;
+  }
+
+  .analytics-bar {
+    width: 20px !important;
+  }
+}
+
 /* Responsive Player Layout */
 .responsive-grid-player {
   display: grid;

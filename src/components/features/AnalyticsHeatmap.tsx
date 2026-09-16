@@ -104,7 +104,7 @@ export const AnalyticsHeatmap: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <img src="/icons/ANALYTICS.gif" alt="Analytics" style={{ width: 40, height: 40, objectFit: 'contain' }} />
           <h2
-            className="font-tech"
+            className="font-tech analytics-header-title"
             style={{
               fontSize: '2.4rem',
               fontWeight: 900,
@@ -144,11 +144,11 @@ export const AnalyticsHeatmap: React.FC = () => {
       <div className="responsive-grid-duo">
         {/* Top Left: Hunter System Profile Card */}
         <GlassCard
+          className="analytics-card"
           style={{
             background: 'rgba(255, 255, 255, 0.88)',
             border: '1px solid rgba(0, 0, 0, 0.08)',
             borderRadius: '28px',
-            padding: '32px',
             boxShadow: '0 10px 30px rgba(0,0,0,0.04)',
             display: 'flex',
             flexDirection: 'column',
@@ -176,13 +176,15 @@ export const AnalyticsHeatmap: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 20 }}>
               {/* Glowing Avatar */}
               <div
+                className="analytics-avatar-wrapper"
                 style={{
                   width: 80,
                   height: 80,
                   borderRadius: '50%',
                   padding: 3,
                   background: 'linear-gradient(135deg, #0284C7 0%, #10B981 50%, #F59E0B 100%)',
-                  boxShadow: '0 8px 20px rgba(2, 132, 199, 0.25)'
+                  boxShadow: '0 8px 20px rgba(2, 132, 199, 0.25)',
+                  flexShrink: 0
                 }}
               >
                 <img
@@ -292,11 +294,11 @@ export const AnalyticsHeatmap: React.FC = () => {
 
         {/* Top Right: HABIT TRACKER */}
         <GlassCard
+          className="analytics-card"
           style={{
             background: 'rgba(255, 255, 255, 0.88)',
             border: '1px solid rgba(0, 0, 0, 0.08)',
             borderRadius: '28px',
-            padding: '32px',
             boxShadow: '0 10px 30px rgba(0,0,0,0.04)',
             display: 'flex',
             flexDirection: 'column',
@@ -343,6 +345,7 @@ export const AnalyticsHeatmap: React.FC = () => {
 
                   {/* Clean Gradient Bar */}
                   <div
+                    className="analytics-bar"
                     style={{
                       width: 28,
                       height: `${day.heightPct}%`,
@@ -381,11 +384,11 @@ export const AnalyticsHeatmap: React.FC = () => {
       <div className="responsive-grid-duo">
         {/* Mid Left: SKILL TRACKER */}
         <GlassCard
+          className="analytics-card"
           style={{
             background: 'rgba(255, 255, 255, 0.88)',
             border: '1px solid rgba(0, 0, 0, 0.08)',
             borderRadius: '28px',
-            padding: '30px',
             boxShadow: '0 10px 30px rgba(0,0,0,0.04)'
           }}
         >
@@ -533,11 +536,11 @@ export const AnalyticsHeatmap: React.FC = () => {
 
         {/* Mid Right: SESSION SUCCESS */}
         <GlassCard
+          className="analytics-card"
           style={{
             background: 'rgba(255, 255, 255, 0.88)',
             border: '1px solid rgba(0, 0, 0, 0.08)',
             borderRadius: '28px',
-            padding: '30px',
             boxShadow: '0 10px 30px rgba(0,0,0,0.04)',
             display: 'flex',
             flexDirection: 'column',
@@ -554,6 +557,7 @@ export const AnalyticsHeatmap: React.FC = () => {
 
             {/* Quick Metrics Bar */}
             <div
+              className="analytics-session-metrics"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(4, 1fr)',
@@ -605,6 +609,7 @@ export const AnalyticsHeatmap: React.FC = () => {
               {past7Days.map((d, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end' }}>
                   <div
+                    className="analytics-bar"
                     style={{
                       width: 24,
                       height: `${d.heightPct}%`,
@@ -634,20 +639,14 @@ export const AnalyticsHeatmap: React.FC = () => {
       {/* =========================================================================
           ROW 3: GOAL RADIAL RING + TODAY'S MILESTONES
           ========================================================================= */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '320px 1fr',
-          gap: 20
-        }}
-      >
+      <div className="responsive-analytics-row3">
         {/* Radial Progress Ring Card */}
         <GlassCard
+          className="analytics-card"
           style={{
             background: 'rgba(255, 255, 255, 0.88)',
             border: '1px solid rgba(0, 0, 0, 0.08)',
             borderRadius: '28px',
-            padding: '30px',
             boxShadow: '0 10px 30px rgba(0,0,0,0.04)',
             display: 'flex',
             flexDirection: 'column',
@@ -709,11 +708,11 @@ export const AnalyticsHeatmap: React.FC = () => {
 
         {/* Daily Quests & Focus Blocks */}
         <GlassCard
+          className="analytics-card"
           style={{
             background: 'rgba(255, 255, 255, 0.88)',
             border: '1px solid rgba(0, 0, 0, 0.08)',
             borderRadius: '28px',
-            padding: '30px',
             boxShadow: '0 10px 30px rgba(0,0,0,0.04)'
           }}
         >
@@ -778,17 +777,17 @@ export const AnalyticsHeatmap: React.FC = () => {
           ROW 4: ACTIVITY HEATMAP MATRIX (Light Glassmorphic Matrix)
           ========================================================================= */}
       <GlassCard
+        className="analytics-card"
         style={{
           background: 'rgba(255, 255, 255, 0.88)',
           border: '1px solid rgba(0, 0, 0, 0.08)',
           borderRadius: '28px',
-          padding: '30px',
           boxShadow: '0 10px 30px rgba(0,0,0,0.04)'
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h3 className="font-tech" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+            <h3 className="font-tech" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
               ACTIVITY HEATMAP
             </h3>
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -814,7 +813,7 @@ export const AnalyticsHeatmap: React.FC = () => {
         </div>
 
         {/* Heatmap Squares Grid (Touch scrollable on mobile) */}
-        <div className="mobile-scroll-row" style={{ padding: '6px 0' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxWidth: '100%', padding: '6px 0' }}>
           <div
             style={{
               display: 'grid',
