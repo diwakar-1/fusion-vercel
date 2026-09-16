@@ -7,14 +7,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html {
-  width: 100%;
-  min-height: 100vh;
-  overflow-x: hidden;
-  overscroll-behavior-y: none;
-}
-
-body {
+html, body {
   width: 100%;
   min-height: 100vh;
   font-family: var(--font-sans);
@@ -22,11 +15,20 @@ body {
   background-color: var(--mesh-cream);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Do NOT set overflow-x on body — it breaks touch scroll in Android Capacitor WebView */
-  touch-action: pan-y pinch-zoom;
+}
+
+html {
+  /* Prevent horizontal overflow without blocking vertical scroll */
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Only on html — putting overscroll-behavior on body blocks the scroll in Chromium */
+  overscroll-behavior-y: none;
+}
+
+body {
+  touch-action: pan-y;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: none;
 }
 
 button, input, textarea, select, a, [role="button"] {
