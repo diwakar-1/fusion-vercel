@@ -28,6 +28,7 @@ import {
 
 export const AnalyticsHeatmap: React.FC = () => {
   const {
+    currentUser,
     profile,
     studySessions,
     dsaSessions,
@@ -46,18 +47,52 @@ export const AnalyticsHeatmap: React.FC = () => {
   const [vacationFeedback, setVacationFeedback] = useState<{ text: string; isProtected: boolean } | null>(null);
 
   // Real-time telemetry computations
-  const userSessions = studySessions.filter(s => (s.user_name || (s as any).userName) === profile.name);
-  const totalStudyMinutes = userSessions.reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
+  const currentLower = (currentUser || 'diwakar').toLowerCase();
+  const profileLower = (profile.name || '').toLowerCase();
+  const userSessions = studySessions.filter(s => {
+    if (!s) return false;
+    const nameLower = (s.user_name || (s as any).userName || '').toLowerCase();
+    const idLower = (s.user_id || (s as any).userId || '').toLowerCase();
+    return (
+      nameLower === currentLower ||
+      nameLower === profileLower ||
+      idLower === `u_${currentLower}` ||
+      idLower.includes(currentLower)
+    );
+  });
+
+  const now = new Date();
+  const todayLocalStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayIsoStr = now.toISOString().split('T')[0];
+
+  const sessionTotalMinutes = userSessions.reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
+  const todaySessionMinutes = userSessions
+    .filter(s => s.timestamp && (s.timestamp.startsWith(todayLocalStr) || s.timestamp.startsWith(todayIsoStr)))
+    .reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
+  const unloggedTodayMinutes = Math.max(0, (profile.todayStudiedMinutes || 0) - todaySessionMinutes);
+  const totalStudyMinutes = sessionTotalMinutes + unloggedTodayMinutes;
   const totalStudyHours = (totalStudyMinutes / 60).toFixed(1);
 
-  const dsaMinutes = userSessions.filter(s => (s.subject_name || (s as any).subject) === 'DSA').reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
-  const mlMinutes = userSessions.filter(s => (s.subject_name || (s as any).subject) === 'Machine Learning').reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
+  const dsaMinutes = userSessions
+    .filter(s => {
+      const sub = (s.subject_name || (s as any).subject || '').toLowerCase();
+      return sub.includes('dsa') || sub.includes('algo') || sub.includes('code');
+    })
+    .reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
+
+  const mlMinutes = userSessions
+    .filter(s => {
+      const sub = (s.subject_name || (s as any).subject || '').toLowerCase();
+      return sub.includes('ml') || sub.includes('machine') || sub.includes('ai');
+    })
+    .reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
 
   const totalProblemsSolved =
     dsaSessions.reduce((acc, s) => acc + s.problemsCount, 0) +
     pdfQuestionSheets.reduce((acc, s) => acc + s.completedCount, 0);
 
-  const dailyGoalMinutes = 4 * 60; // 4 Hours standard goal
+  const dailyGoalHours = Math.max(2, profile.dailyGoalHours || 4);
+  const dailyGoalMinutes = dailyGoalHours * 60;
   const todayProgressPct = Math.min(100, Math.round((profile.todayStudiedMinutes / dailyGoalMinutes) * 100));
   const minutesLeft = Math.max(0, dailyGoalMinutes - profile.todayStudiedMinutes);
   const hoursLeft = (minutesLeft / 60).toFixed(1);
@@ -66,15 +101,21 @@ export const AnalyticsHeatmap: React.FC = () => {
   const past7Days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
-    const dateStr = d.toISOString().split('T')[0];
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    const isoStr = d.toISOString().split('T')[0];
     const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
 
     const dayMinutes = userSessions
-      .filter(s => s.timestamp.startsWith(dateStr))
+      .filter(s => s.timestamp && (s.timestamp.startsWith(dateStr) || s.timestamp.startsWith(isoStr)))
       .reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
 
-    const heightPct = Math.min(100, Math.round((dayMinutes / (4 * 60)) * 100));
-    return { date: dateStr, dayName, minutes: dayMinutes, heightPct: Math.max(8, heightPct) };
+    const isToday = i === 6;
+    const effectiveDayMinutes = isToday ? Math.max(dayMinutes, profile.todayStudiedMinutes || 0) : dayMinutes;
+    const heightPct = Math.min(100, Math.round((effectiveDayMinutes / dailyGoalMinutes) * 100));
+    return { date: dateStr, dayName, minutes: effectiveDayMinutes, heightPct: Math.max(8, heightPct) };
   });
 
   const completedHabits = habits.filter(h => h.streak > 0).length;
@@ -627,7 +668,7 @@ export const AnalyticsHeatmap: React.FC = () => {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Target: 4.0 Hours Daily (2h DSA + 2h ML)
+              Target: {dailyGoalHours.toFixed(1)} Hours Daily ({(profile.dsaGoalHours || 2).toFixed(1)}h DSA + {(profile.mlGoalHours || 2).toFixed(1)}h ML)
             </span>
             <span style={{ fontSize: '0.82rem', color: '#0284C7', fontWeight: 700 }}>
               {hoursLeft}h remaining today
@@ -691,14 +732,14 @@ export const AnalyticsHeatmap: React.FC = () => {
                 {todayProgressPct}%
               </span>
               <span style={{ fontSize: '0.7rem', color: '#0284C7', fontWeight: 700 }}>
-                4h TARGET
+                {dailyGoalHours.toFixed(1)}h TARGET
               </span>
             </div>
           </div>
 
           <div style={{ marginTop: 16 }}>
             <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#0F172A' }}>
-              {(profile.todayStudiedMinutes / 60).toFixed(1)}h / 4.0h Studied
+              {(profile.todayStudiedMinutes / 60).toFixed(1)}h / {dailyGoalHours.toFixed(1)}h Studied
             </div>
             <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
               {hoursLeft} Hours remaining to hit daily target
@@ -787,11 +828,25 @@ export const AnalyticsHeatmap: React.FC = () => {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h3 className="font-tech" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
-              ACTIVITY HEATMAP
-            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h3 className="font-tech" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                ACTIVITY HEATMAP
+              </h3>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  padding: '3px 10px',
+                  borderRadius: '10px',
+                  background: 'rgba(2, 132, 199, 0.1)',
+                  color: '#0284C7'
+                }}
+              >
+                {heatmapData.filter(d => d.count > 0).length} Active Study Days
+              </span>
+            </div>
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              90-day real-time contribution matrix (minutes of study logged per date)
+              90-day real-time contribution matrix • {(heatmapData.reduce((acc, d) => acc + d.count, 0) / 60).toFixed(1)}h logged
             </span>
           </div>
 
@@ -825,19 +880,20 @@ export const AnalyticsHeatmap: React.FC = () => {
             }}
           >
             {heatmapData.map((day, idx) => {
-              let bg = 'rgba(0, 0, 0, 0.06)';
+              const isToday = day.date === todayLocalStr || day.date === todayIsoStr;
+              let bg = 'rgba(0, 0, 0, 0.05)';
               let shadow = 'none';
 
               if (day.intensity === 1) {
-                bg = 'rgba(2, 132, 199, 0.25)';
+                bg = '#BAE6FD';
               } else if (day.intensity === 2) {
-                bg = 'rgba(2, 132, 199, 0.55)';
+                bg = '#38BDF8';
               } else if (day.intensity === 3) {
                 bg = '#0284C7';
-                shadow = '0 0 6px rgba(2, 132, 199, 0.4)';
+                shadow = '0 0 6px rgba(2, 132, 199, 0.35)';
               } else if (day.intensity === 4) {
                 bg = '#0369A1';
-                shadow = '0 0 8px rgba(3, 105, 161, 0.5)';
+                shadow = '0 0 8px rgba(3, 105, 161, 0.45)';
               }
 
               return (
@@ -850,13 +906,15 @@ export const AnalyticsHeatmap: React.FC = () => {
                   style={{
                     width: '100%',
                     aspectRatio: '1/1',
-                    borderRadius: 3,
+                    borderRadius: 4,
                     background: bg,
                     boxShadow: shadow,
+                    outline: isToday ? '2px solid #0284C7' : 'none',
+                    outlineOffset: isToday ? 1 : 0,
                     cursor: 'pointer',
-                    transition: 'all 0.1s ease'
+                    transition: 'all 0.15s ease'
                   }}
-                  title={`${day.date}: ${day.count} mins`}
+                  title={`${day.date}${isToday ? ' (Today)' : ''}: ${day.count} mins`}
                 />
               );
             })}
@@ -866,11 +924,11 @@ export const AnalyticsHeatmap: React.FC = () => {
         {/* Heatmap Legend */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginTop: 12, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
           <span>Less</span>
-          <div style={{ width: 12, height: 12, borderRadius: 2, background: 'rgba(0, 0, 0, 0.06)' }} />
-          <div style={{ width: 12, height: 12, borderRadius: 2, background: 'rgba(2, 132, 199, 0.25)' }} />
-          <div style={{ width: 12, height: 12, borderRadius: 2, background: 'rgba(2, 132, 199, 0.55)' }} />
-          <div style={{ width: 12, height: 12, borderRadius: 2, background: '#0284C7' }} />
-          <div style={{ width: 12, height: 12, borderRadius: 2, background: '#0369A1' }} />
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: 'rgba(0, 0, 0, 0.05)' }} />
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: '#BAE6FD' }} />
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: '#38BDF8' }} />
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: '#0284C7' }} />
+          <div style={{ width: 12, height: 12, borderRadius: 3, background: '#0369A1' }} />
           <span>More (3h+)</span>
         </div>
       </GlassCard>

@@ -54,13 +54,13 @@ class CloudSyncService {
   private lastSyncTimestamp = 0;
   private isSyncing = false;
   private syncTimer: any = null;
-  private pendingPush: SyncPayload | null = null;
+  private pendingPush: Partial<SyncPayload> | null = null;
   private pushDebounceTimer: any = null;
 
   /**
    * Push local user state to the cloud
    */
-  async pushState(user: string, payload: SyncPayload): Promise<boolean> {
+  async pushState(user: string, payload: Partial<SyncPayload>): Promise<boolean> {
     this.pendingPush = payload;
 
     if (this.pushDebounceTimer) {
@@ -71,14 +71,20 @@ class CloudSyncService {
       this.pushDebounceTimer = setTimeout(async () => {
         const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
         const now = Date.now();
+        const storedGeminiKey = localStorage.getItem(`fusion_gemini_api_key_${currentUserKey}`) || undefined;
+        const storedYtKey = localStorage.getItem(`fusion_yt_api_key_${currentUserKey}`) || undefined;
+
         const payloadToPush = {
           ...this.pendingPush,
+          geminiApiKey: this.pendingPush?.geminiApiKey || storedGeminiKey,
+          youtubeApiKey: this.pendingPush?.youtubeApiKey || storedYtKey,
           updatedAt: now
         };
 
         try {
-          // 1. Try Vercel API endpoint
-          const endpoint = getSyncEndpoint();
+          // 1. Try primary API endpoint with explicit ?user= query parameter
+          const baseEndpoint = getSyncEndpoint();
+          const endpoint = `${baseEndpoint}?user=${encodeURIComponent(currentUserKey)}`;
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -91,6 +97,7 @@ class CloudSyncService {
 
           if (response.ok) {
             this.lastSyncTimestamp = now;
+            try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(now)); } catch {}
             resolve(true);
             return;
           }
@@ -116,6 +123,7 @@ class CloudSyncService {
             });
             if (fallbackRes.ok) {
               this.lastSyncTimestamp = now;
+              try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(now)); } catch {}
               resolve(true);
               return;
             }
@@ -140,6 +148,13 @@ class CloudSyncService {
     const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
     const partnerUserKey = currentUserKey === 'diwakar' ? 'ayush' : 'diwakar';
 
+    if (this.lastSyncTimestamp === 0) {
+      try {
+        const savedTs = Number(localStorage.getItem(`fusion_last_sync_${currentUserKey}`) || 0);
+        if (savedTs > 0) this.lastSyncTimestamp = savedTs;
+      } catch {}
+    }
+
     try {
       // 1. Try primary sync endpoint
       const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(currentUserKey)}&since=${this.lastSyncTimestamp}`;
@@ -151,6 +166,7 @@ class CloudSyncService {
         const result = await response.json();
         if (result.success && result.data && (result.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
           this.lastSyncTimestamp = result.lastUpdated || Date.now();
+          try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
           onRemoteUpdate(result.data, result.partner?.data);
         } else if (result.success && result.partner?.data) {
           onRemoteUpdate(null as any, result.partner.data);
@@ -181,6 +197,7 @@ class CloudSyncService {
 
       if (userData && (userData.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
         this.lastSyncTimestamp = userData.lastUpdated || Date.now();
+        try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
         onRemoteUpdate(userData, partnerData);
       } else if (partnerData) {
         onRemoteUpdate(null as any, partnerData);

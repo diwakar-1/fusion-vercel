@@ -56,110 +56,15 @@ const INITIAL_DB = {
   dsaSessions: [],
   partnerChat: [],
   youtubeApiKey: '',
-  notes: [
-    {
-      id: 'n_1',
-      title: 'Kahn\'s Algorithm & Topological Sort',
-      content: '1. Compute in-degree of all vertices.\n2. Push all nodes with in-degree 0 into queue.\n3. While queue not empty, pop u, add to result, decrement in-degree of neighbours.\n4. If neighbour in-degree becomes 0, push to queue.',
-      tags: ['DSA', 'Graph Theory'],
-      createdAt: 'Today'
-    },
-    {
-      id: 'n_2',
-      title: 'Multi-Head Self-Attention Derivation',
-      content: 'Attention(Q, K, V) = softmax((Q*K^T) / sqrt(d_k)) * V.\nMultiHead(Q,K,V) = Concat(head_1, ..., head_h) * W^O where head_i = Attention(Q*W_i^Q, K*W_i^K, V*W_i^V).',
-      tags: ['ML', 'Transformers'],
-      createdAt: 'Today'
-    }
-  ],
-  pdfQuestionSheets: [
-    {
-      id: 'sheet_1',
-      title: 'Top 75 LeetCode Blind Sheet',
-      subject: 'DSA',
-      totalCount: 10,
-      completedCount: 0,
-      questions: [
-        { id: 'q1', title: 'Two Sum', platform: 'LeetCode', completed: false },
-        { id: 'q2', title: 'Best Time to Buy and Sell Stock', platform: 'LeetCode', completed: false },
-        { id: 'q3', title: 'Contains Duplicate', platform: 'LeetCode', completed: false },
-        { id: 'q4', title: 'Product of Array Except Self', platform: 'LeetCode', completed: false },
-        { id: 'q5', title: 'Maximum Subarray (Kadane\'s)', platform: 'LeetCode', completed: false },
-        { id: 'q6', title: '3Sum', platform: 'LeetCode', completed: false },
-        { id: 'q7', title: 'Container With Most Water', platform: 'LeetCode', completed: false },
-        { id: 'q8', title: 'Trapping Rain Water', platform: 'LeetCode', completed: false },
-        { id: 'q9', title: 'Reverse Linked List', platform: 'LeetCode', completed: false },
-        { id: 'q10', title: 'Merge Two Sorted Lists', platform: 'LeetCode', completed: false }
-      ]
-    }
-  ],
+  notes: [],
+  pdfQuestionSheets: [],
   dailyTasks: [
     { id: 'dt_1', title: 'Solve 2 Medium problems on LeetCode / Codeforces', platform: 'LeetCode', exp: 100, completed: false, isCoreStreakTask: true },
     { id: 'dt_2', title: 'Complete 2 Hours DSA Deep Focus Session', platform: 'Focus Timer', exp: 100, completed: false, isCoreStreakTask: true },
     { id: 'dt_3', title: 'Watch 1 Module from ML Course Playlist', platform: 'Courses Hub', exp: 100, completed: false, isCoreStreakTask: true },
     { id: 'dt_4', title: 'Review 1 Spaced Repetition Revision Note', platform: 'Notes', exp: 50, completed: false, isCoreStreakTask: false }
   ],
-  courses: [
-    {
-      id: 'c_dsa_java',
-      title: 'Introduction to Java Programming & Placement Course',
-      subject: 'DSA',
-      youtubeUrl: 'https://www.youtube.com/watch?v=yRpLlJmRo2w',
-      embedUrl: 'https://www.youtube-nocookie.com/embed/yRpLlJmRo2w?autoplay=0&rel=0&enablejsapi=1',
-      addedBy: 'Diwakar',
-      currentLesson: 'Introduction to Java Language | Lecture 1 | Complete Placement Course',
-      totalLessons: '10 lectures',
-      lectures: [
-        { id: 'lec_j1', title: 'Introduction to Java Language | Lecture 1 | Complete Placement Course', duration: '28:30', videoId: 'yRpLlJmRo2w', completed: true },
-        { id: 'lec_j2', title: 'Variables, Data Types & Input Output in Java | Lecture 2', duration: '34:15', videoId: 'lusA-6vXQjg', completed: true },
-        { id: 'lec_j3', title: 'Conditional Statements (If-Else & Switch) | Lecture 3', duration: '41:20', videoId: '0bI92x6G9hE', completed: false },
-        { id: 'lec_j4', title: 'Loops in Java (For, While, Do-While) with Flowcharts | Lecture 4', duration: '38:50', videoId: 'vvanI8NRlSI', completed: false },
-        { id: 'lec_j5', title: 'Patterns in Java (Part 1 - Nested Loops) | Lecture 5', duration: '45:10', videoId: 'BSVKUk58Kwg', completed: false },
-        { id: 'lec_j6', title: 'Functions & Methods in Java | Call by Value | Lecture 6', duration: '32:40', videoId: '4A1a7l2w1Zc', completed: false },
-        { id: 'lec_j7', title: 'Time & Space Complexity Basics (Big-O Notation) | Lecture 7', duration: '50:15', videoId: 'n-v_8uNgt0s', completed: false },
-        { id: 'lec_j8', title: 'Arrays in Java (Creation, Memory Allocation, Linear Search) | Lecture 8', duration: '48:30', videoId: 'rzA7UJ-hQn4', completed: false },
-        { id: 'lec_j9', title: 'Binary Search Algorithm in Arrays | Lecture 9', duration: '36:45', videoId: '1XAfapoKL-4', completed: false },
-        { id: 'lec_j10', title: 'Sorting Algorithms (Bubble, Selection, Insertion Sort) | Lecture 10', duration: '55:20', videoId: 'r_MbozD32eo', completed: false }
-      ]
-    },
-    {
-      id: 'c_ml_karpathy',
-      title: 'Andrej Karpathy - Neural Networks: Zero to Hero',
-      subject: 'Machine Learning',
-      youtubeUrl: 'https://www.youtube.com/watch?v=VMj-3S1tku0',
-      embedUrl: 'https://www.youtube-nocookie.com/embed/VMj-3S1tku0?autoplay=0&rel=0&enablejsapi=1',
-      addedBy: 'FUSE Curated',
-      currentLesson: 'The spelled-out intro to neural networks and backpropagation: building micrograd',
-      totalLessons: '7 masterclasses',
-      lectures: [
-        { id: 'k_1', title: 'The spelled-out intro to neural networks and backpropagation: building micrograd', duration: '2:25:34', videoId: 'VMj-3S1tku0', completed: true, phase: 'Phase 1: ML Foundations' },
-        { id: 'k_2', title: 'The spelled-out intro to language modeling: building makemore (Part 1)', duration: '1:57:12', videoId: 'PaCmpygFfXo', completed: true, phase: 'Phase 2: Autoregressive LM' },
-        { id: 'k_3', title: 'Building makemore Part 2: MLP (Multi-Layer Perceptron)', duration: '1:15:42', videoId: 'TCH_1BHYA8I', completed: false, phase: 'Phase 2: Autoregressive LM' },
-        { id: 'k_4', title: 'Building makemore Part 3: Activations & Gradients, BatchNorm', duration: '1:44:20', videoId: 'P6sfmUTpUmc', completed: false, phase: 'Phase 3: Deep Optimization' },
-        { id: 'k_5', title: 'Building makemore Part 4: Becoming a Backprop Ninja', duration: '1:56:49', videoId: 'q8SA3rM6ckI', completed: false, phase: 'Phase 3: Deep Optimization' },
-        { id: 'k_6', title: 'Building makemore Part 5: Building a WaveNet', duration: '1:21:05', videoId: 't3YJ5hKiMQ0', completed: false, phase: 'Phase 4: Transformer GPT' },
-        { id: 'k_7', title: 'Let\'s build GPT: from scratch, in code, spelled out', duration: '1:56:22', videoId: 'kCc8FmEb1nY', completed: false, phase: 'Phase 4: Transformer GPT' }
-      ]
-    },
-    {
-      id: 'c_dsa_striver',
-      title: 'Striver A2Z DSA Sheet - Complete Placement Series',
-      subject: 'DSA',
-      youtubeUrl: 'https://www.youtube.com/watch?v=EAR7De6G0ms',
-      embedUrl: 'https://www.youtube-nocookie.com/embed/EAR7De6G0ms?autoplay=0&rel=0&enablejsapi=1',
-      addedBy: 'Ayush',
-      currentLesson: 'Step 1.1: Learn the Basics of Programming Language & Syntax',
-      totalLessons: '6 core steps',
-      lectures: [
-        { id: 's_1', title: 'Step 1.1: User Input/Output, Data Types, If-Else Statements', duration: '32:15', videoId: 'EAR7De6G0ms', completed: true },
-        { id: 's_2', title: 'Step 1.2: Build-up Logical Thinking (Patterns)', duration: '45:00', videoId: 'tNm_NQDsmEI', completed: true },
-        { id: 's_3', title: 'Step 1.3: C++ STL / Java Collections Overview', duration: '58:40', videoId: 'RRVYpIET_RU', completed: false },
-        { id: 's_4', title: 'Step 1.4: Know Basic Maths (Count Digits, Reverse Number, GCD)', duration: '42:10', videoId: '1xNbjMdbjug', completed: false },
-        { id: 's_5', title: 'Step 1.5: Learn Basic Recursion (Backtracking intuition)', duration: '51:25', videoId: 'yVdKa8dnKiE', completed: false },
-        { id: 's_6', title: 'Step 1.6: Learn Basic Hashing (Frequency counting, Maps)', duration: '39:10', videoId: 'KEs5UyBJ39g', completed: false }
-      ]
-    }
-  ]
+  courses: []
 };
 
 function loadDb() {

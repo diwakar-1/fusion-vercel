@@ -32,12 +32,34 @@ async function fetchCloudDoc(user) {
   return memoryCache[user]?.data || null;
 }
 
+async function parseRequestBody(req) {
+  if (req.body) {
+    return typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+  }
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', chunk => { raw += chunk; });
+    req.on('end', () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        resolve({});
+      }
+    });
+    req.on('error', () => resolve({}));
+  });
+}
+
 async function updateCloudDoc(user, payload, timestamp) {
   const docId = CLOUD_DOC_IDS[user];
   if (!docId) return false;
   try {
+    const existing = await fetchCloudDoc(user);
     const dataToSave = {
+      ...(existing || {}),
       ...payload,
+      geminiApiKey: payload.geminiApiKey !== undefined ? payload.geminiApiKey : (existing?.geminiApiKey || undefined),
+      youtubeApiKey: payload.youtubeApiKey !== undefined ? payload.youtubeApiKey : (existing?.youtubeApiKey || undefined),
       user,
       lastUpdated: timestamp || Date.now()
     };
@@ -77,18 +99,16 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { searchParams } = new URL(req.url, `https://${req.headers.host || 'fusion-vercel.vercel.app'}`);
-  const userParam = (searchParams.get('user') || req.body?.user || 'diwakar').toLowerCase();
-  const targetKey = userParam.includes('ayush') ? 'ayush' : 'diwakar';
-  const partnerKey = targetKey === 'diwakar' ? 'ayush' : 'diwakar';
+  const url = new URL(req.url, `https://${req.headers.host || 'fusion-vercel.vercel.app'}`);
+  const queryUser = url.searchParams.get('user');
 
   if (req.method === 'POST') {
     try {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { user, payload, timestamp } = body || {};
-
-      const key = (user || targetKey).toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
-      const now = timestamp || Date.now();
+      const body = await parseRequestBody(req);
+      const userField = queryUser || body?.user || 'diwakar';
+      const key = userField.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+      const payload = body?.payload;
+      const now = body?.timestamp || Date.now();
 
       if (payload) {
         await updateCloudDoc(key, payload, now);
@@ -105,7 +125,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'GET') {
-    const since = parseInt(searchParams.get('since') || '0', 10);
+    const userParam = (queryUser || 'diwakar').toLowerCase();
+    const targetKey = userParam.includes('ayush') ? 'ayush' : 'diwakar';
+    const partnerKey = targetKey === 'diwakar' ? 'ayush' : 'diwakar';
+    const since = parseInt(url.searchParams.get('since') || '0', 10);
 
     // Fetch user and partner state from durable cloud database
     const [userData, partnerData] = await Promise.all([

@@ -255,6 +255,11 @@ export const AiChatAssistantModal: React.FC = () => {
     }
   }, [chatMessages, isAiChatOpen]);
 
+  // Synchronize API key input whenever settings modal opens or user/key changes
+  useEffect(() => {
+    setApiKeyInput(geminiApiKey || '');
+  }, [geminiApiKey, showKeyModal]);
+
   const handleCheckOllama = async () => {
     setIsCheckingOllama(true);
     const up = await GeminiService.isOllamaAvailable();
@@ -274,9 +279,7 @@ export const AiChatAssistantModal: React.FC = () => {
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    if (apiKeyInput.trim()) {
-      setGeminiApiKey(apiKeyInput.trim());
-    }
+    setGeminiApiKey(apiKeyInput.trim());
     if (ollamaModelInput.trim()) {
       GeminiService.setOllamaModel(ollamaModelInput.trim());
     }
@@ -623,11 +626,11 @@ export const AiChatAssistantModal: React.FC = () => {
               {/* Gemini Key */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
-                  1. Google Gemini API Key (Primary)
+                  1. Google Gemini API Key ({profile.name}'s Isolated Key)
                 </label>
                 <input
                   type="password"
-                  placeholder="AIzaSy..."
+                  placeholder={`AIzaSy... (${profile.name}'s private key)`}
                   value={apiKeyInput}
                   onChange={e => setApiKeyInput(e.target.value)}
                   style={{

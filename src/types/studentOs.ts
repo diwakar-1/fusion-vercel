@@ -254,4 +254,5 @@ export interface StudentNote {
   pdfUrl?: string;
   fileName?: string;
   fileSize?: string;
+  hasPdf?: boolean;
 }

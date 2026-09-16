@@ -22,8 +22,12 @@ export class GeminiService {
   }
 
   public static setApiKey(userName: string, key: string): void {
-    const cleanKey = key.trim();
-    localStorage.setItem(this.getStorageKey(userName), cleanKey);
+    const cleanKey = (key || '').trim().replace(/^['"]|['"]$/g, '');
+    if (cleanKey) {
+      localStorage.setItem(this.getStorageKey(userName), cleanKey);
+    } else {
+      localStorage.removeItem(this.getStorageKey(userName));
+    }
   }
 
   public static removeApiKey(userName: string): void {
@@ -115,8 +119,10 @@ IMPORTANT OUTPUT FORMATTING RULES:
   ): Promise<string> {
     const fullSystemPrompt = (systemInstruction ? systemInstruction + '\n\n' : '') + this.getBaseSystemInstruction();
 
+    const cleanKey = (apiKey || '').trim().replace(/^['"]|['"]$/g, '');
+
     // If no API key provided, try local Ollama right away
-    if (!apiKey) {
+    if (!cleanKey) {
       const ollamaOk = await this.isOllamaAvailable();
       if (ollamaOk) {
         try {
@@ -129,7 +135,7 @@ IMPORTANT OUTPUT FORMATTING RULES:
         }
       }
       throw new Error(
-        'Gemini API Key missing. Please click the Settings icon or enter your key to activate FUSE AI, or start local Ollama on port 11434.'
+        'Gemini API Key missing. Please open Settings or enter your key in the AI Chat window to activate FUSE AI, or start local Ollama.'
       );
     }
 
@@ -161,13 +167,13 @@ IMPORTANT OUTPUT FORMATTING RULES:
       }
     };
 
-    const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+    const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     let lastError: any = null;
 
     for (const model of models) {
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

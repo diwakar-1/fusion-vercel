@@ -7,6 +7,7 @@ import { api } from '../services/api';
 import { cloudSync } from '../services/cloudSync';
 import { GeminiService } from '../services/gemini';
 import { YouTubeService } from '../services/youtube';
+import { savePdfToIndexedDb, deletePdfFromIndexedDb } from '../services/pdfStorage';
 import {
   StudentProfile,
   FriendProfile,
@@ -40,6 +41,7 @@ interface StudentOsContextType {
   setIsProfileModalOpen: (open: boolean) => void;
 
   // Real-Time Multi-User Auth (Diwakar & Ayush)
+  currentUser: 'Diwakar' | 'Ayush';
   isBackendConnected: boolean;
   refreshBackendData: () => Promise<void>;
   isAuthenticated: boolean;
@@ -214,13 +216,7 @@ const DEFAULT_AYUSH_PROFILE: StudentProfile = {
 
 const DEFAULT_COURSES: VideoCourse[] = [];
 
-const DEFAULT_TIMETABLE: TimetableClass[] = [
-  { id: '1', day: 'Wed', subject: 'Operating Systems', code: 'CS301', time: '09:00 - 10:00 AM', room: 'Hall 302', professor: 'Dr. Aris Vance' },
-  { id: '2', day: 'Wed', subject: 'Database Management', code: 'CS303', time: '10:15 - 11:15 AM', room: 'Lab 4', professor: 'Prof. Sarah Chen' },
-  { id: '3', day: 'Wed', subject: 'Machine Learning', code: 'CS305', time: '11:30 - 12:30 PM', room: 'Seminar A', professor: 'Dr. Marcus Brody' },
-  { id: '4', day: 'Thu', subject: 'Computer Networks', code: 'CS304', time: '10:15 - 11:15 AM', room: 'Lab 2', professor: 'Dr. Elena Rostova' },
-  { id: '5', day: 'Fri', subject: 'Software Engineering', code: 'CS306', time: '09:00 - 10:00 AM', room: 'Hall 201', professor: 'Prof. David Miller' }
-];
+const DEFAULT_TIMETABLE: TimetableClass[] = [];
 
 const DEFAULT_STUDY_SESSIONS: StudySession[] = [];
 
@@ -245,7 +241,7 @@ const DEFAULT_ML_MILESTONES: MlMilestone[] = [
     phase: 'Phase 1: Math & Foundations',
     title: 'Linear Algebra & Backpropagation from Scratch',
     description: 'Eigenvalues, vector calculus, computational graphs and building Micrograd.',
-    completed: true,
+    completed: false,
     resources: [{ name: 'Andrej Karpathy Micrograd', url: 'https://www.youtube.com/watch?v=VMj-3S1tku0' }]
   },
   {
@@ -253,7 +249,7 @@ const DEFAULT_ML_MILESTONES: MlMilestone[] = [
     phase: 'Phase 2: Deep Language Modeling',
     title: 'Autoregressive LM & MLP Makemore',
     description: 'Character-level language modeling, loss functions and cross-entropy.',
-    completed: true,
+    completed: false,
     resources: [{ name: 'Makemore Series', url: 'https://www.youtube.com/watch?v=PaCmpygFfXo' }]
   },
   {
@@ -335,16 +331,6 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isAiChatOpen, setIsAiChatOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
-  // Storage version gate — bump version to wipe stale cached data
-  const STORAGE_VERSION = 'fusion_v3';
-  if (typeof window !== 'undefined' && localStorage.getItem('fusion_storage_version') !== STORAGE_VERSION) {
-    // Clear stale DSA problems, pdf sheets, and task completion states for fresh start
-    localStorage.removeItem('fusion_dsa_problems');
-    localStorage.removeItem('fusion_pdf_sheets');
-    localStorage.removeItem('fusion_daily_tasks');
-    localStorage.setItem('fusion_storage_version', STORAGE_VERSION);
-  }
-
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('fusion_authenticated') === 'true';
@@ -355,19 +341,32 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
 
   const [profile, setProfile] = useState<StudentProfile>(() => {
-    const saved = localStorage.getItem(`fusion_profile_${currentUser.toLowerCase()}`);
+    const now = new Date();
+    const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayIso = now.toISOString().split('T')[0];
+    const userKey = ((localStorage.getItem('fusion_user') as string) || 'Diwakar').toLowerCase();
+    const savedDate = localStorage.getItem(`fusion_studied_date_${userKey}`);
+    const isSameDay = savedDate === todayLocal || savedDate === todayIso;
+
+    const rawSavedMinutes = localStorage.getItem(`fusion_studied_minutes_${userKey}`);
+    const directMinutes = (rawSavedMinutes && isSameDay) ? (parseInt(rawSavedMinutes, 10) || 0) : 0;
+
+    const saved = localStorage.getItem(`fusion_profile_${userKey}`);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        const profileMinutes = isSameDay ? (parsed.todayStudiedMinutes ?? 0) : 0;
         return {
           ...parsed,
           streakDays: parsed.streakDays ?? 0,
           totalXp: Math.max(100, parsed.totalXp ?? 100),
-          level: parsed.level ?? 1
+          level: parsed.level ?? 1,
+          todayStudiedMinutes: Math.max(profileMinutes, directMinutes)
         };
       } catch {}
     }
-    return currentUser === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
+    const def = userKey.includes('ayush') ? DEFAULT_AYUSH_PROFILE : DEFAULT_DIWAKAR_PROFILE;
+    return { ...def, todayStudiedMinutes: directMinutes };
   });
 
   const [activeFriend, setActiveFriend] = useState<FriendProfile>(() => {
@@ -459,14 +458,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return todayDay === 1 || todayDay === 2;
   });
 
-  const [timetableSchedule, setTimetableSchedule] = useState<TimetableScheduleSlot[]>([
-    { id: 'sch_0', time: '09:00 AM - 04:00 PM', subject: 'College Lectures', topic: 'College Working Hours & Academic Sessions', type: 'College Working Hours', completed: true },
-    { id: 'sch_1', time: '04:00 - 05:00 PM', subject: 'Break', topic: 'Commute & Evening Refreshment', type: 'Rest', completed: true },
-    { id: 'sch_2', time: '05:00 - 07:00 PM', subject: 'DSA', topic: 'Two Pointers & Sliding Window LeetCode Patterns (2h Target)', type: 'Problem Solving', completed: false },
-    { id: 'sch_3', time: '07:00 - 08:00 PM', subject: 'Break', topic: 'Dinner & Downtime Break', type: 'Rest', completed: false },
-    { id: 'sch_4', time: '08:00 - 10:00 PM', subject: 'Machine Learning', topic: 'Neural Networks Architecture & Backpropagation (2h Target)', type: 'Video Lecture', completed: false },
-    { id: 'sch_5', time: '10:00 - 10:30 PM', subject: 'Core CS', topic: 'Daily Revision & Code Commit Checklist', type: 'Revision', completed: false }
-  ]);
+  const [timetableSchedule, setTimetableSchedule] = useState<TimetableScheduleSlot[]>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_timetable_schedule');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
 
   // Courses & Playlists (Fresh start, no dummy courses)
   const [courses, setCourses] = useState<VideoCourse[]>(() => {
@@ -550,18 +548,30 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return saved ? JSON.parse(saved) : DEFAULT_DAILY_TASKS;
   });
 
-  const [habits, setHabits] = useState<Habit[]>([
-    { id: 'h1', title: 'Daily LeetCode 2 Problems', icon: 'Code', streak: 14, completedToday: true, weeklyHistory: [true, true, true, true, true, true, true] },
-    { id: 'h2', title: '2 Hours Machine Learning Deep Focus', icon: 'Brain', streak: 12, completedToday: false, weeklyHistory: [true, true, false, true, true, true, false] },
-    { id: 'h3', title: '2 Hours DSA Deep Practice Block', icon: 'Zap', streak: 14, completedToday: true, weeklyHistory: [true, true, true, true, true, true, true] },
-    { id: 'h4', title: 'Spaced Repetition Concept Review', icon: 'BookOpen', streak: 9, completedToday: false, weeklyHistory: [false, true, true, true, false, true, false] }
-  ]);
+  const [habits, setHabits] = useState<Habit[]>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_habits');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      { id: 'h1', title: 'Daily LeetCode 2 Problems', icon: 'Code', streak: 0, completedToday: false, weeklyHistory: [false, false, false, false, false, false, false] },
+      { id: 'h2', title: '2 Hours Machine Learning Deep Focus', icon: 'Brain', streak: 0, completedToday: false, weeklyHistory: [false, false, false, false, false, false] },
+      { id: 'h3', title: '2 Hours DSA Deep Practice Block', icon: 'Zap', streak: 0, completedToday: false, weeklyHistory: [false, false, false, false, false, false, false] },
+      { id: 'h4', title: 'Spaced Repetition Concept Review', icon: 'BookOpen', streak: 0, completedToday: false, weeklyHistory: [false, false, false, false, false, false, false] }
+    ];
+  });
 
-  const [goals, setGoals] = useState<Goal[]>([
-    { id: 'g1', title: 'Master 150 Blind LeetCode Problems', category: 'DSA', targetDate: 'Nov 2026', progress: 68 },
-    { id: 'g2', title: 'Build GPT-2 from Scratch in PyTorch', category: 'Machine Learning', targetDate: 'Oct 2026', progress: 54 },
-    { id: 'g3', title: 'Complete Striver Graph & DP Series', category: 'DSA', targetDate: 'Dec 2026', progress: 75 }
-  ]);
+  const [goals, setGoals] = useState<Goal[]>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_goals');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [
+      { id: 'g1', title: 'Master 150 Blind LeetCode Problems', category: 'DSA', targetDate: 'Nov 2026', progress: 0 },
+      { id: 'g2', title: 'Build GPT-2 from Scratch in PyTorch', category: 'Machine Learning', targetDate: 'Oct 2026', progress: 0 },
+      { id: 'g3', title: 'Complete Striver Graph & DP Series', category: 'DSA', targetDate: 'Dec 2026', progress: 0 }
+    ];
+  });
 
   const DEFAULT_INITIAL_NOTES: StudentNote[] = [];
 
@@ -586,12 +596,69 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [mlMilestones, setMlMilestones] = useState<MlMilestone[]>(DEFAULT_ML_MILESTONES);
 
-  // Focus Timer State
-  const [timerDurationMinutes, setTimerDurationMinutes] = useState<number>(25);
-  const [timerSeconds, setTimerSeconds] = useState<number>(25 * 60);
+  // Focus Timer State - Persisted across reloads so timer never resets to starting
+  const [timerDurationMinutes, setTimerDurationMinutes] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_timer_duration');
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+    } catch {}
+    return 25;
+  });
+
+  const [timerMode, setTimerMode] = useState<'focus' | 'short_break' | 'long_break'>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_timer_mode');
+      if (saved === 'focus' || saved === 'short_break' || saved === 'long_break') return saved;
+    } catch {}
+    return 'focus';
+  });
+
+  const [timerSubject, setTimerSubject] = useState<string>(() => {
+    try {
+      return localStorage.getItem('fusion_timer_subject') || 'DSA';
+    } catch {
+      return 'DSA';
+    }
+  });
+
+  const [timerSeconds, setTimerSeconds] = useState<number>(() => {
+    try {
+      const savedSecs = localStorage.getItem('fusion_timer_seconds');
+      if (savedSecs !== null) {
+        const parsed = parseInt(savedSecs, 10);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
+      }
+      const savedDur = localStorage.getItem('fusion_timer_duration');
+      const dur = savedDur ? parseInt(savedDur, 10) || 25 : 25;
+      return dur * 60;
+    } catch {
+      return 25 * 60;
+    }
+  });
+
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
-  const [timerMode, setTimerMode] = useState<'focus' | 'short_break' | 'long_break'>('focus');
-  const [timerSubject, setTimerSubject] = useState<string>('DSA');
+  const elapsedFocusSeconds = useRef<number>(0);
+  const currentFocusSessionSeconds = useRef<number>(0);
+
+  // Sync Focus Timer State to LocalStorage
+  useEffect(() => {
+    try { localStorage.setItem('fusion_timer_duration', String(timerDurationMinutes)); } catch {}
+  }, [timerDurationMinutes]);
+
+  useEffect(() => {
+    try { localStorage.setItem('fusion_timer_mode', timerMode); } catch {}
+  }, [timerMode]);
+
+  useEffect(() => {
+    try { localStorage.setItem('fusion_timer_subject', timerSubject); } catch {}
+  }, [timerSubject]);
+
+  useEffect(() => {
+    try { localStorage.setItem('fusion_timer_seconds', String(timerSeconds)); } catch {}
+  }, [timerSeconds]);
 
   // Backend connection flag
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
@@ -689,7 +756,16 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const dayMinutes = studySessions
         .filter(s => {
           if (!s) return false;
-          const userMatch = (s.user_name?.toLowerCase() === currentUser.toLowerCase() || (s as any).userName?.toLowerCase() === currentUser.toLowerCase());
+          const nameLower = (s.user_name || (s as any).userName || '').toLowerCase();
+          const idLower = (s.user_id || (s as any).userId || '').toLowerCase();
+          const currentLower = (currentUser || '').toLowerCase();
+          const profileLower = (profile.name || '').toLowerCase();
+          const userMatch = (
+            nameLower === currentLower ||
+            nameLower === profileLower ||
+            idLower === `u_${currentLower}` ||
+            idLower.includes(currentLower)
+          );
           if (!userMatch) return false;
           const ts = s.timestamp || '';
           return ts.startsWith(dateStr) || ts.startsWith(isoStr);
@@ -709,13 +785,38 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       days.push({ date: dateStr, count: effectiveMinutes, intensity });
     }
     return days;
-  }, [studySessions, currentUser, profile.todayStudiedMinutes]);
+  }, [studySessions, currentUser, profile.name, profile.todayStudiedMinutes]);
 
   const [heatmapData, setHeatmapData] = useState<HeatmapDay[]>(generateHeatmap);
 
   useEffect(() => {
     setHeatmapData(generateHeatmap());
   }, [generateHeatmap]);
+
+  // Reconcile today's studied minutes with actual studySessions on mount / session updates
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const sessionMinutes = studySessions
+      .filter(s => {
+        if (!s || !s.timestamp) return false;
+        const userMatch = (s.user_name?.toLowerCase() === currentUser.toLowerCase() || (s as any).userName?.toLowerCase() === currentUser.toLowerCase());
+        return userMatch && s.timestamp.startsWith(todayStr);
+      })
+      .reduce((sum, s) => sum + (Number(s.duration_minutes) || 0), 0);
+
+    if (sessionMinutes > profile.todayStudiedMinutes) {
+      setProfile(p => {
+        const nextStudied = Math.max(p.todayStudiedMinutes, sessionMinutes);
+        const updated = { ...p, todayStudiedMinutes: nextStudied };
+        try {
+          localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+          localStorage.setItem(`fusion_studied_minutes_${currentUser.toLowerCase()}`, String(nextStudied));
+          localStorage.setItem(`fusion_studied_date_${currentUser.toLowerCase()}`, todayStr);
+        } catch {}
+        return updated;
+      });
+    }
+  }, [studySessions, currentUser]);
 
   // Duo BroadcastChannel Receiver for Real-Time Sync
   useEffect(() => {
@@ -834,14 +935,35 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       (remoteData, partnerData) => {
         if (remoteData) {
           if (remoteData.profile) {
-            setProfile(prev => ({
-              ...prev,
-              ...remoteData.profile,
-              streakDays: remoteData.profile.streakDays ?? prev.streakDays,
-              totalXp: Math.max(prev.totalXp, remoteData.profile.totalXp ?? prev.totalXp),
-              level: remoteData.profile.level ?? prev.level,
-              todayStudiedMinutes: Math.max(prev.todayStudiedMinutes, remoteData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes)
-            }));
+            setProfile(prev => {
+              const remote = remoteData.profile;
+              const cleanName = (remote.name && remote.name.trim()) ? remote.name.trim() : prev.name;
+              const cleanCollege = (remote.college && remote.college.trim()) ? remote.college.trim() : prev.college;
+              const cleanBranch = (remote.branch && remote.branch.trim()) ? remote.branch.trim() : prev.branch;
+              const cleanSemester = (remote.semester && remote.semester.trim()) ? remote.semester.trim() : prev.semester;
+              const cleanAvatar = (remote.avatar && remote.avatar.trim()) ? remote.avatar.trim() : prev.avatar;
+              const cleanHandle = (remote.handle && remote.handle.trim()) ? remote.handle.trim() : prev.handle;
+
+              const updated: StudentProfile = {
+                ...prev,
+                ...remote,
+                name: cleanName,
+                college: cleanCollege,
+                branch: cleanBranch,
+                semester: cleanSemester,
+                avatar: cleanAvatar,
+                handle: cleanHandle,
+                streakDays: Math.max(prev.streakDays, remote.streakDays ?? 0),
+                totalXp: Math.max(prev.totalXp, remote.totalXp ?? 100),
+                level: Math.max(prev.level, remote.level ?? 1),
+                todayStudiedMinutes: Math.max(prev.todayStudiedMinutes, remote.todayStudiedMinutes ?? 0),
+                dailyGoalHours: remote.dailyGoalHours || prev.dailyGoalHours || 4.0
+              };
+              try {
+                localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+              } catch {}
+              return updated;
+            });
           }
           if (Array.isArray(remoteData.dailyTasks) && remoteData.dailyTasks.length > 0) {
             setDailyTasks(remoteData.dailyTasks);
@@ -851,7 +973,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setNotes(remoteData.notes);
             try { localStorage.setItem('fusion_notes', JSON.stringify(remoteData.notes)); } catch {}
           }
-          if (remoteData.timetableSchedule) {
+          if (remoteData.timetableSchedule && Array.isArray(remoteData.timetableSchedule)) {
             setTimetableSchedule(remoteData.timetableSchedule);
             try { localStorage.setItem('fusion_timetable_schedule', JSON.stringify(remoteData.timetableSchedule)); } catch {}
           }
@@ -894,13 +1016,15 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             try { localStorage.setItem('fusion_ml_milestones', JSON.stringify(remoteData.mlMilestones)); } catch {}
           }
           // Sync API keys strictly for current user
-          if (remoteData.geminiApiKey) {
-            setGeminiApiKeyState(remoteData.geminiApiKey);
-            GeminiService.setApiKey(currentUser, remoteData.geminiApiKey);
+          if (remoteData.geminiApiKey && typeof remoteData.geminiApiKey === 'string' && remoteData.geminiApiKey.trim()) {
+            const cleanKey = remoteData.geminiApiKey.trim();
+            setGeminiApiKeyState(cleanKey);
+            GeminiService.setApiKey(currentUser, cleanKey);
           }
-          if (remoteData.youtubeApiKey) {
-            setYoutubeApiKeyState(remoteData.youtubeApiKey);
-            YouTubeService.setApiKey(currentUser, remoteData.youtubeApiKey);
+          if (remoteData.youtubeApiKey && typeof remoteData.youtubeApiKey === 'string' && remoteData.youtubeApiKey.trim()) {
+            const cleanKey = remoteData.youtubeApiKey.trim();
+            setYoutubeApiKeyState(cleanKey);
+            YouTubeService.setApiKey(currentUser, cleanKey);
           }
           // Sync user's private FUSE AI chat history
           if (Array.isArray(remoteData.aiChatMessages) && remoteData.aiChatMessages.length > 0) {
@@ -1010,9 +1134,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [
     isAuthenticated,
     currentUser,
-    profile.totalXp,
-    profile.streakDays,
-    profile.todayStudiedMinutes,
+    profile,
     dailyTasks,
     dsaProblems,
     notes,
@@ -1077,7 +1199,14 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       localStorage.setItem('fusion_authenticated', 'true');
       localStorage.setItem('fusion_user', user);
 
-      const targetProfile = user === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
+      const saved = localStorage.getItem(`fusion_profile_${user.toLowerCase()}`);
+      let targetProfile = user === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          targetProfile = { ...targetProfile, ...parsed };
+        } catch {}
+      }
       setProfile(targetProfile);
       setGeminiApiKeyState(GeminiService.getApiKey(user));
       setYoutubeApiKeyState(YouTubeService.getApiKey(user));
@@ -1095,8 +1224,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const updateProfileAvatar = (avatarUrl: string) => {
-    setProfile(prev => ({ ...prev, avatar: avatarUrl }));
-    localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify({ ...profile, avatar: avatarUrl }));
+    setProfile(prev => {
+      const next = { ...prev, avatar: avatarUrl };
+      localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(next));
+      cloudSync.pushState(currentUser, { profile: next });
+      return next;
+    });
     api.updateProfileAvatar({ userName: currentUser, avatar: avatarUrl });
   };
 
@@ -1104,6 +1237,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setProfile(prev => {
       const next = { ...prev, ...updates };
       localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(next));
+      cloudSync.pushState(currentUser, { profile: next });
       return next;
     });
   };
@@ -1114,6 +1248,24 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (isTimerRunning && timerSeconds > 0) {
       interval = setInterval(() => {
         setTimerSeconds(s => s - 1);
+        if (timerMode === 'focus') {
+          currentFocusSessionSeconds.current += 1;
+          elapsedFocusSeconds.current += 1;
+          if (elapsedFocusSeconds.current >= 60) {
+            elapsedFocusSeconds.current -= 60;
+            setProfile(p => {
+              const nextMins = p.todayStudiedMinutes + 1;
+              const nextXp = p.totalXp + 2;
+              const updated = { ...p, todayStudiedMinutes: nextMins, totalXp: nextXp };
+              try {
+                localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+                localStorage.setItem(`fusion_studied_minutes_${currentUser.toLowerCase()}`, String(nextMins));
+                localStorage.setItem(`fusion_studied_date_${currentUser.toLowerCase()}`, new Date().toISOString().split('T')[0]);
+              } catch {}
+              return updated;
+            });
+          }
+        }
       }, 1000);
     } else if (isTimerRunning && timerSeconds === 0) {
       setIsTimerRunning(false);
@@ -1132,13 +1284,10 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       };
 
       setStudySessions(prev => [newSession, ...prev]);
-      setProfile(p => ({
-        ...p,
-        todayStudiedMinutes: p.todayStudiedMinutes + minutesSpent,
-        totalXp: p.totalXp + minutesSpent * 2
-      }));
-
       api.createStudySession(newSession);
+
+      currentFocusSessionSeconds.current = 0;
+      elapsedFocusSeconds.current = 0;
 
       // Broadcast to partner
       if (broadcastChannel) {
@@ -1148,13 +1297,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           payload: {
             isFocusing: false,
             focusSubject: timerSubject,
-            todayStudiedMinutes: profile.todayStudiedMinutes + minutesSpent
+            todayStudiedMinutes: profile.todayStudiedMinutes
           }
         });
       }
     }
     return () => clearInterval(interval);
-  }, [isTimerRunning, timerSeconds, timerDurationMinutes, timerSubject, currentUser, profile.todayStudiedMinutes]);
+  }, [isTimerRunning, timerSeconds, timerDurationMinutes, timerSubject, currentUser, profile.todayStudiedMinutes, timerMode]);
 
   const startTimer = () => {
     setIsTimerRunning(true);
@@ -1173,6 +1322,21 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const pauseTimer = () => {
     setIsTimerRunning(false);
+    if (timerMode === 'focus' && currentFocusSessionSeconds.current >= 60) {
+      const minutesEarned = Math.floor(currentFocusSessionSeconds.current / 60);
+      const newSession: StudySession = {
+        id: 's_' + Date.now(),
+        user_id: currentUser === 'Diwakar' ? 'u_diwakar' : 'u_ayush',
+        user_name: currentUser,
+        subject_name: timerSubject,
+        duration_minutes: minutesEarned,
+        timestamp: new Date().toISOString(),
+        notes: `Focus block on ${timerSubject} (${minutesEarned}m).`
+      };
+      setStudySessions(prev => [newSession, ...prev]);
+      api.createStudySession(newSession);
+      currentFocusSessionSeconds.current = 0;
+    }
     if (broadcastChannel) {
       broadcastChannel.postMessage({
         type: 'PARTNER_FOCUS_UPDATE',
@@ -1188,6 +1352,22 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const resetTimer = (mode: 'focus' | 'short_break' | 'long_break' = 'focus') => {
     setIsTimerRunning(false);
+    if (timerMode === 'focus' && currentFocusSessionSeconds.current >= 60) {
+      const minutesEarned = Math.floor(currentFocusSessionSeconds.current / 60);
+      const newSession: StudySession = {
+        id: 's_' + Date.now(),
+        user_id: currentUser === 'Diwakar' ? 'u_diwakar' : 'u_ayush',
+        user_name: currentUser,
+        subject_name: timerSubject,
+        duration_minutes: minutesEarned,
+        timestamp: new Date().toISOString(),
+        notes: `Focus block on ${timerSubject} (${minutesEarned}m).`
+      };
+      setStudySessions(prev => [newSession, ...prev]);
+      api.createStudySession(newSession);
+    }
+    currentFocusSessionSeconds.current = 0;
+    elapsedFocusSeconds.current = 0;
     setTimerMode(mode);
     const mins = mode === 'focus' ? timerDurationMinutes : mode === 'short_break' ? 5 : 15;
     setTimerSeconds(mins * 60);
@@ -1201,11 +1381,17 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       timestamp: new Date().toISOString()
     };
     setStudySessions(prev => [newSession, ...prev]);
-    setProfile(p => ({
-      ...p,
-      todayStudiedMinutes: p.todayStudiedMinutes + session.duration_minutes,
-      totalXp: p.totalXp + session.duration_minutes * 2
-    }));
+    setProfile(p => {
+      const nextMins = p.todayStudiedMinutes + session.duration_minutes;
+      const nextXp = p.totalXp + session.duration_minutes * 2;
+      const updated = { ...p, todayStudiedMinutes: nextMins, totalXp: nextXp };
+      try {
+        localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+        localStorage.setItem(`fusion_studied_minutes_${currentUser.toLowerCase()}`, String(nextMins));
+        localStorage.setItem(`fusion_studied_date_${currentUser.toLowerCase()}`, new Date().toISOString().split('T')[0]);
+      } catch {}
+      return updated;
+    });
     api.createStudySession(newSession);
   };
 
@@ -1217,11 +1403,17 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       timestamp: new Date().toISOString()
     };
     setDsaSessions(prev => [newSession, ...prev]);
-    setProfile(p => ({
-      ...p,
-      todayStudiedMinutes: p.todayStudiedMinutes + session.durationMinutes,
-      totalXp: p.totalXp + session.problemsCount * 30
-    }));
+    setProfile(p => {
+      const nextMins = p.todayStudiedMinutes + session.durationMinutes;
+      const nextXp = p.totalXp + session.problemsCount * 30;
+      const updated = { ...p, todayStudiedMinutes: nextMins, totalXp: nextXp };
+      try {
+        localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+        localStorage.setItem(`fusion_studied_minutes_${currentUser.toLowerCase()}`, String(nextMins));
+        localStorage.setItem(`fusion_studied_date_${currentUser.toLowerCase()}`, new Date().toISOString().split('T')[0]);
+      } catch {}
+      return updated;
+    });
     confetti({ particleCount: 50, spread: 60 });
     api.createDsaSession(session);
   };
@@ -1386,28 +1578,56 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Notes
   const addNote = (note: { title: string; content: string; tags: string[]; pdfUrl?: string; fileName?: string; fileSize?: string }) => {
+    const noteId = 'n_' + Date.now();
+    const hasPdf = Boolean(note.pdfUrl);
+
+    if (hasPdf && note.pdfUrl) {
+      savePdfToIndexedDb(noteId, {
+        pdfDataUrl: note.pdfUrl,
+        fileName: note.fileName,
+        fileSize: note.fileSize
+      });
+    }
+
     const newNote: StudentNote = {
       ...note,
-      id: 'n_' + Date.now(),
+      id: noteId,
+      hasPdf,
       createdAt: 'Just now'
     };
+
     setNotes(prev => {
       const updated = [newNote, ...prev.filter(n => n.id !== newNote.id)];
       try {
-        localStorage.setItem('fusion_notes', JSON.stringify(updated));
+        // Strip heavy base64 strings before saving to localStorage to prevent quota exhaustion
+        const cleanForStorage = updated.map(n => ({
+          ...n,
+          pdfUrl: undefined
+        }));
+        localStorage.setItem('fusion_notes', JSON.stringify(cleanForStorage));
       } catch (e) {
         console.warn('[Note Storage Quota Warning]', e);
       }
       return updated;
     });
-    api.createNote(newNote).catch(e => console.warn('api createNote error', e));
+
+    api.createNote({
+      title: newNote.title,
+      content: newNote.content,
+      tags: newNote.tags
+    }).catch(e => console.warn('api createNote error', e));
   };
 
   const deleteNote = (id: string) => {
+    deletePdfFromIndexedDb(id);
     setNotes(prev => {
       const updated = prev.filter(n => n.id !== id);
       try {
-        localStorage.setItem('fusion_notes', JSON.stringify(updated));
+        const cleanForStorage = updated.map(n => ({
+          ...n,
+          pdfUrl: undefined
+        }));
+        localStorage.setItem('fusion_notes', JSON.stringify(cleanForStorage));
       } catch {}
       return updated;
     });
@@ -1752,6 +1972,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         habits,
         goals,
         mlMilestones,
+        geminiApiKey: geminiApiKey || undefined,
+        youtubeApiKey: youtubeApiKey || undefined,
         studyLogs: studySessions,
         partnerChatMessages: next,
         isVacationPaused,
@@ -1782,6 +2004,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       habits,
       goals,
       mlMilestones,
+      geminiApiKey: geminiApiKey || undefined,
+      youtubeApiKey: youtubeApiKey || undefined,
       studyLogs: studySessions,
       partnerChatMessages,
       lastNudge: { sender: currentUser, type, timestamp: Date.now() },
@@ -2356,6 +2580,7 @@ INSTRUCTIONS:
         setIsAiChatOpen,
         isProfileModalOpen,
         setIsProfileModalOpen,
+        currentUser,
         isBackendConnected,
         refreshBackendData,
         isAuthenticated,

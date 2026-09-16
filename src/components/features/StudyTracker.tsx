@@ -37,7 +37,8 @@ export const StudyTracker: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const dailyGoalMinutes = 4 * 60; // 4 Hours (2h DSA + 2h ML)
+  const dailyGoalHours = Math.max(2, profile.dailyGoalHours || 4);
+  const dailyGoalMinutes = dailyGoalHours * 60;
   const progressPct = Math.min(100, Math.round((profile.todayStudiedMinutes / dailyGoalMinutes) * 100));
   const hoursLeft = Math.max(0, (dailyGoalMinutes - profile.todayStudiedMinutes) / 60).toFixed(1);
 
@@ -68,7 +69,7 @@ export const StudyTracker: React.FC = () => {
               FOCUS SESSION ENGINE
             </span>
             <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Target: 4.0 Hours Daily (2h DSA + 2h ML) • Synced with {activeFriend.name}
+              Target: {dailyGoalHours.toFixed(1)} Hours Daily ({(profile.dsaGoalHours || 2).toFixed(1)}h DSA + {(profile.mlGoalHours || 2).toFixed(1)}h ML) • Synced with {activeFriend.name}
             </span>
           </div>
 

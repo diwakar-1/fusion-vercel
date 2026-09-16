@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStudentOs } from '../../context/StudentOsContext';
 import { GlassCard } from '../common/GlassCard';
 import { PdfQuestionSheet, PdfQuestionItem } from '../../types/studentOs';
+import { getPdfFromIndexedDb, dataUrlToBlobUrl } from '../../services/pdfStorage';
 import {
   BookOpen,
   Plus,
@@ -90,19 +92,42 @@ export const NotesKnowledgeBase: React.FC = () => {
       const dataUrl = event.target?.result as string;
       const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
       const subjectTag = selectedSubject === 'All' ? 'DSA' : selectedSubject;
+      const sizeStr = file.size > 1024 * 1024 
+        ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+        : `${(file.size / 1024).toFixed(1)} KB`;
       addNote({
         title: cleanTitle,
         content: `Uploaded PDF document: ${file.name}`,
         tags: [subjectTag],
         pdfUrl: dataUrl,
         fileName: file.name,
-        fileSize: `${(file.size / 1024).toFixed(1)} KB`
+        fileSize: sizeStr
       });
       setActiveTab('notes');
       setSelectedSubject('All');
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handlePreviewNote = async (n: any) => {
+    let rawPdfUrl = n.pdfUrl;
+    if (!rawPdfUrl && (n.hasPdf || n.fileName?.toLowerCase().endsWith('.pdf'))) {
+      const dbData = await getPdfFromIndexedDb(n.id);
+      if (dbData?.pdfDataUrl) {
+        rawPdfUrl = dbData.pdfDataUrl;
+      }
+    }
+    const resolvedUrl = rawPdfUrl ? dataUrlToBlobUrl(rawPdfUrl) : undefined;
+    setPreviewNote({
+      title: n.title,
+      content: n.content,
+      subject: (n.tags && n.tags[0]) || 'General',
+      createdAt: n.createdAt,
+      pdfUrl: resolvedUrl || rawPdfUrl,
+      fileName: n.fileName,
+      fileSize: n.fileSize
+    });
   };
 
   // Screenshot Selection Handler
@@ -445,7 +470,7 @@ export const NotesKnowledgeBase: React.FC = () => {
                       >
                         {(n.tags && n.tags[0]) || 'General'}
                       </span>
-                      {n.pdfUrl && (
+                      {(n.pdfUrl || n.hasPdf || n.fileName?.toLowerCase().endsWith('.pdf')) && (
                         <span
                           style={{
                             fontSize: '0.72rem',
@@ -506,15 +531,7 @@ export const NotesKnowledgeBase: React.FC = () => {
                   </span>
 
                   <button
-                    onClick={() => setPreviewNote({
-                      title: n.title,
-                      content: n.content,
-                      subject: (n.tags && n.tags[0]) || 'General',
-                      createdAt: n.createdAt,
-                      pdfUrl: n.pdfUrl,
-                      fileName: n.fileName,
-                      fileSize: n.fileSize
-                    })}
+                    onClick={() => handlePreviewNote(n)}
                     className="charcoal-pill-btn"
                     style={{ padding: '7px 16px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}
                   >
@@ -776,18 +793,19 @@ export const NotesKnowledgeBase: React.FC = () => {
         </div>
       )}
 
-      {/* FULLSCREEN PDF-ONLY DOCUMENT PREVIEW MODAL */}
-      {previewNote && (
+      {/* FULLSCREEN PDF DOCUMENT PREVIEW MODAL (Portaled to document.body above navbar & dock) */}
+      {previewNote && typeof document !== 'undefined' && createPortal(
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 250,
+            zIndex: 99999,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(14px)',
+            background: 'rgba(15, 23, 42, 0.9)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
             padding: isFullscreen ? 0 : 16,
             transition: 'all 0.2s ease'
           }}
@@ -803,7 +821,7 @@ export const NotesKnowledgeBase: React.FC = () => {
               background: '#0F172A',
               borderRadius: isFullscreen ? 0 : '24px',
               overflow: 'hidden',
-              boxShadow: '0 25px 60px -12px rgba(0, 0, 0, 0.5)',
+              boxShadow: '0 25px 60px -12px rgba(0, 0, 0, 0.6)',
               transition: 'all 0.2s ease'
             }}
           >
@@ -851,7 +869,7 @@ export const NotesKnowledgeBase: React.FC = () => {
                     }}
                   >
                     <Download size={15} />
-                    <span>Download PDF</span>
+                    <span>Download / Open PDF</span>
                   </a>
                 )}
                 <button
@@ -913,19 +931,65 @@ export const NotesKnowledgeBase: React.FC = () => {
               </div>
             </div>
 
-            {/* Viewer Content: Truly Edge-to-Edge Embedded PDF iframe */}
+            {/* Viewer Content: Truly Edge-to-Edge Embedded PDF Viewer */}
             {previewNote.pdfUrl ? (
-              <div style={{ flex: 1, width: '100%', height: 'calc(100% - 60px)', background: '#334155' }}>
-                <iframe
-                  src={previewNote.pdfUrl}
+              <div style={{ flex: 1, width: '100%', height: 'calc(100% - 60px)', background: '#1E293B', position: 'relative' }}>
+                <object
+                  data={previewNote.pdfUrl}
+                  type="application/pdf"
                   style={{
                     width: '100%',
                     height: '100%',
                     border: 'none',
-                    background: '#FFFFFF'
+                    background: '#1E293B'
                   }}
                   title={previewNote.title}
-                />
+                >
+                  <embed
+                    src={previewNote.pdfUrl}
+                    type="application/pdf"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                  <div
+                    style={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 30,
+                      textAlign: 'center',
+                      color: '#FFFFFF'
+                    }}
+                  >
+                    <FileText size={56} color="#38BDF8" style={{ marginBottom: 16 }} />
+                    <h4 className="font-tech" style={{ fontSize: '1.35rem', fontWeight: 800, marginBottom: 8 }}>
+                      {previewNote.title}.pdf
+                    </h4>
+                    <p style={{ fontSize: '0.9rem', color: '#94A3B8', maxWidth: 460, margin: '0 auto 20px auto', lineHeight: 1.6 }}>
+                      Document loaded successfully. On mobile or supported readers, click below to open or view in your device's PDF application.
+                    </p>
+                    <a
+                      href={previewNote.pdfUrl}
+                      download={previewNote.fileName || `${previewNote.title}.pdf`}
+                      style={{
+                        textDecoration: 'none',
+                        background: '#0284C7',
+                        color: '#FFFFFF',
+                        padding: '12px 28px',
+                        borderRadius: '12px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        fontWeight: 700,
+                        fontSize: '0.94rem'
+                      }}
+                    >
+                      <Download size={18} />
+                      <span>Open / Download PDF Document</span>
+                    </a>
+                  </div>
+                </object>
               </div>
             ) : (
               <div
@@ -975,7 +1039,8 @@ export const NotesKnowledgeBase: React.FC = () => {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* UPLOAD SOLVED QUESTION SCREENSHOT MODAL */}

@@ -38,77 +38,7 @@
   "partnerChat": [],
   "youtubeApiKey": "AIzaSyA7CsbqsyB0Ll8kmqWO9FCx-_j1_ghayeQ",
   "notes": [],
-  "pdfQuestionSheets": [
-    {
-      "id": "sheet_1",
-      "title": "Top 75 LeetCode Blind Sheet",
-      "subject": "DSA",
-      "totalCount": 10,
-      "completedCount": 0,
-      "questions": [
-        {
-          "id": "q1",
-          "title": "Two Sum",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q2",
-          "title": "Best Time to Buy and Sell Stock",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q3",
-          "title": "Contains Duplicate",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q4",
-          "title": "Product of Array Except Self",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q5",
-          "title": "Maximum Subarray (Kadane's)",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q6",
-          "title": "3Sum",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q7",
-          "title": "Container With Most Water",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q8",
-          "title": "Trapping Rain Water",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q9",
-          "title": "Reverse Linked List",
-          "platform": "LeetCode",
-          "completed": false
-        },
-        {
-          "id": "q10",
-          "title": "Merge Two Sorted Lists",
-          "platform": "LeetCode",
-          "completed": false
-        }
-      ]
-    }
-  ],
+  "pdfQuestionSheets": [],
   "dailyTasks": [
     {
       "id": "dt_1",
