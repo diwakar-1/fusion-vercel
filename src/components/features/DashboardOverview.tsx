@@ -1,26 +1,32 @@
 import React, { useState } from 'react';
-import confetti from 'canvas-confetti';
+import { triggerSparkleConfetti } from '../../utils/confettiHelper';
 import { useStudentOs } from '../../context/StudentOsContext';
 import { GlassCard } from '../common/GlassCard';
 import { RobotMascot } from '../common/RobotMascot';
 import {
   Sparkles,
+  Flame,
+  Zap,
+  Award,
+  CheckCircle2,
+  Calendar,
+  Layers,
+  ChevronRight,
+  TrendingUp,
+  Target,
   Play,
   Pause,
   RotateCcw,
-  ArrowUpRight,
-  Code2,
-  Calendar,
-  CheckCircle2,
-  Flame,
-  Zap,
-  BookOpen,
-  Clock,
-  Film,
-  Target,
-  Users,
   Check,
-  Award
+  Film,
+  BookOpen,
+  Code2,
+  BrainCircuit,
+  MessageSquareText,
+  Clock,
+  ExternalLink,
+  Lock,
+  Users
 } from 'lucide-react';
 
 export const DashboardOverview: React.FC = () => {
@@ -87,13 +93,11 @@ export const DashboardOverview: React.FC = () => {
     const isFirstTime = !task?.xpClaimed;
 
     toggleDailyTask(taskId, true);
-    try {
-      confetti({
-        particleCount: isFirstTime ? 110 : 40,
-        spread: isFirstTime ? 80 : 40,
-        origin: { y: 0.6 }
-      });
-    } catch {}
+    triggerSparkleConfetti({
+      particleCount: isFirstTime ? 60 : 25,
+      spread: isFirstTime ? 70 : 35,
+      origin: { y: 0.6 }
+    });
 
     // Only show XP celebration if this is the first time
     if (isFirstTime) {

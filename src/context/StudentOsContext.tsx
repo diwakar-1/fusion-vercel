@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import confetti from 'canvas-confetti';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { triggerSparkleConfetti as confetti } from '../utils/confettiHelper';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { StatusBar, Style as StatusBarStyle } from '@capacitor/status-bar';

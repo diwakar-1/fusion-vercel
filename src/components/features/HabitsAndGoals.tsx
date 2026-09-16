@@ -20,7 +20,7 @@ import {
   X,
   RotateCcw
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
+import { triggerSparkleConfetti as confetti } from '../../utils/confettiHelper';
 
 const PRESET_CODING_CHALLENGES = [
   { title: 'Solve 2 Medium problems on LeetCode', platform: 'LeetCode', exp: 100, isCoreStreakTask: true },

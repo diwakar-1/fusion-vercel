@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import confetti from 'canvas-confetti';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { triggerSparkleConfetti as confetti } from '../../utils/confettiHelper';
 import { useStudentOs } from '../../context/StudentOsContext';
 import { GlassCard } from '../common/GlassCard';
 import {
@@ -569,21 +569,35 @@ export const CollegeTimetable: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={() => handleRegenerateGraphic(true)}
-            className="charcoal-pill-btn"
             style={{
-              padding: '11px 24px',
+              padding: '10px 22px',
               fontSize: '0.88rem',
+              fontWeight: 700,
+              fontFamily: 'var(--font-tech)',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
+              cursor: 'pointer',
+              borderRadius: 'var(--radius-pill)',
+              border: justUpdatedGraphic ? '1.5px solid #10B981' : '1.5px solid rgba(99, 102, 241, 0.35)',
               background: justUpdatedGraphic
                 ? 'linear-gradient(135deg, #059669 0%, #10B981 100%)'
-                : 'var(--charcoal-pill)',
+                : 'linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(139, 92, 246, 0.16) 100%)',
+              color: justUpdatedGraphic ? '#FFFFFF' : '#4338CA',
               transition: 'all 0.25s ease',
-              boxShadow: justUpdatedGraphic ? '0 8px 24px rgba(16, 185, 129, 0.35)' : 'none'
+              boxShadow: justUpdatedGraphic ? '0 8px 24px rgba(16, 185, 129, 0.35)' : '0 4px 14px rgba(99, 102, 241, 0.15)'
             }}
           >
-            <img src="/icons/TIME TABLE.gif" alt="Timetable" style={{ width: 20, height: 20, objectFit: 'contain' }} />
+            <img
+              src="/icons/TIME TABLE.gif"
+              alt="Timetable"
+              style={{
+                width: 22,
+                height: 22,
+                objectFit: 'contain',
+                filter: justUpdatedGraphic ? 'brightness(1.5)' : 'drop-shadow(0 2px 4px rgba(99, 102, 241, 0.3))'
+              }}
+            />
             <span>{justUpdatedGraphic ? '✓ Graphic Updated & Ready!' : 'Update Timetable Graphic'}</span>
           </button>
         </div>
@@ -658,14 +672,14 @@ export const CollegeTimetable: React.FC = () => {
               style={{
                 padding: '10px 20px',
                 borderRadius: 'var(--radius-pill)',
-                border: 'none',
+                border: isSelected ? '1.5px solid rgba(99, 102, 241, 0.4)' : '1px solid rgba(0, 0, 0, 0.06)',
                 fontFamily: 'var(--font-tech)',
                 fontWeight: 700,
                 fontSize: '0.9rem',
                 cursor: 'pointer',
-                background: isSelected ? 'var(--charcoal-pill)' : 'rgba(255, 255, 255, 0.75)',
+                background: isSelected ? 'linear-gradient(135deg, #4338CA 0%, #6366F1 100%)' : 'rgba(255, 255, 255, 0.85)',
                 color: isSelected ? '#FFFFFF' : 'var(--text-secondary)',
-                boxShadow: isSelected ? '0 6px 18px rgba(30, 30, 36, 0.25)' : 'none',
+                boxShadow: isSelected ? '0 6px 20px rgba(79, 70, 229, 0.35)' : '0 2px 6px rgba(0, 0, 0, 0.03)',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,

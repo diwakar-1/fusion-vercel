@@ -27,7 +27,7 @@ import {
   Film,
   ChevronRight
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
+import { triggerSparkleConfetti as confetti } from '../../utils/confettiHelper';
 
 export const FriendsStudyRoom: React.FC = () => {
   const {

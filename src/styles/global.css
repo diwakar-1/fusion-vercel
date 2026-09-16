@@ -17,6 +17,9 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   touch-action: manipulation;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: auto;
 }
 
 button, input, textarea, select, a, [role="button"] {
@@ -372,11 +375,38 @@ button, input, textarea, select, a, [role="button"] {
 }
 
 @media (max-width: 768px) {
+  /* Disable heavy background orb floating animation on mobile to prevent WebView repaint lag */
+  .ambient-mesh-orb {
+    animation: none !important;
+    transform: translate3d(0, 0, 0) !important;
+    will-change: auto !important;
+  }
+
+  /* Optimize glass cards on mobile for buttery 60-120fps scrolling */
+  .glass-card {
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    contain: paint;
+    transform: translateZ(0);
+  }
+
+  .glass-pill {
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+  }
+
   .responsive-dock {
     bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
     padding: 6px 8px !important;
     max-width: calc(100vw - 12px) !important;
     gap: 4px !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+  }
+
+  .responsive-main-container {
+    -webkit-overflow-scrolling: touch;
+    transform: translateZ(0);
   }
 }
 

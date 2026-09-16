@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import confetti from 'canvas-confetti';
+import { triggerSparkleConfetti as confetti } from '../../utils/confettiHelper';
 import { useStudentOs } from '../../context/StudentOsContext';
 import { GlassCard } from '../common/GlassCard';
 import { VideoCourse, PlaylistLecture } from '../../types/studentOs';
