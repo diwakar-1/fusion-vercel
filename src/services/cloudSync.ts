@@ -10,9 +10,12 @@ const CLOUD_DOC_IDS: Record<string, string> = {
   ayush: 'ff808181a09d98f701a0a8863d2016cd'
 };
 
-// Cloud sync endpoint: Always synchronize to live Vercel Cloud API so Web (local/deployed) and Android share state in real-time
+// Single production backend — Web + Android share state in real-time
+const RENDER_SYNC = 'https://fussion-api.onrender.com/api/v1/sync';
+
 const getSyncEndpoint = (): string => {
-  return 'https://fusion-vercel.vercel.app/api/sync';
+  const fromEnv = (import.meta as any).env?.VITE_SYNC_URL as string | undefined;
+  return (fromEnv && fromEnv.trim()) || RENDER_SYNC;
 };
 
 export interface SyncPayload {

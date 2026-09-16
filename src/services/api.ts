@@ -1,10 +1,15 @@
 /**
  * FUSION API Client
- * Seamless communication with FUSION backend (http://localhost:8000/api/v1)
- * Tailored strictly for Diwakar & Ayush real-time co-study.
+ * Web + Android both talk to the same production backend.
  */
 
-const API_BASE = '/api/v1';
+const RENDER_API = 'https://fussion-api.onrender.com/api/v1';
+
+const API_BASE =
+  ((import.meta as any).env?.VITE_API_BASE_URL as string | undefined)?.trim() ||
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+    ? '/api/v1'
+    : RENDER_API);
 
 class ApiClient {
   private token: string | null = null;
@@ -71,7 +76,10 @@ class ApiClient {
   // Health check
   async checkHealth(): Promise<boolean> {
     try {
-      const res = await fetch('/health', { method: 'GET' });
+      const healthUrl = API_BASE.startsWith('http')
+        ? API_BASE.replace(/\/api\/v1\/?$/, '/health')
+        : '/health';
+      const res = await fetch(healthUrl, { method: 'GET' });
       return res.ok;
     } catch {
       return false;
