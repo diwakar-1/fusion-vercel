@@ -128,6 +128,8 @@ class CloudSyncService {
     });
   }
 
+  private hasInitialPulledUsers: Record<string, boolean> = {};
+
   /**
    * Pull latest remote state from the cloud (every second)
    */
@@ -140,28 +142,33 @@ class CloudSyncService {
 
     const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
     const partnerUserKey = currentUserKey === 'diwakar' ? 'ayush' : 'diwakar';
+    const isFirstPull = !this.hasInitialPulledUsers[currentUserKey];
 
-    if (this.lastSyncTimestamp === 0) {
+    if (this.lastSyncTimestamp === 0 && !isFirstPull) {
       try {
         const savedTs = Number(localStorage.getItem(`fusion_last_sync_${currentUserKey}`) || 0);
         if (savedTs > 0) this.lastSyncTimestamp = savedTs;
       } catch {}
     }
 
+    const sinceParam = isFirstPull ? 0 : this.lastSyncTimestamp;
+
     try {
       // 1. Try primary sync endpoint
-      const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(currentUserKey)}&since=${this.lastSyncTimestamp}`;
+      const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(currentUserKey)}&since=${sinceParam}`;
       const response = await fetch(endpoint, {
         headers: { 'Accept': 'application/json' }
       });
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.data && (result.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
+        if (result.success && result.data && (isFirstPull || result.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
           this.lastSyncTimestamp = result.lastUpdated || Date.now();
+          this.hasInitialPulledUsers[currentUserKey] = true;
           try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
           onRemoteUpdate(result.data, result.partner?.data);
         } else if (result.success && result.partner?.data) {
+          if (isFirstPull) this.hasInitialPulledUsers[currentUserKey] = true;
           onRemoteUpdate(null as any, result.partner.data);
         }
         return;
@@ -188,11 +195,13 @@ class CloudSyncService {
       const userData = userJson?.data;
       const partnerData = partnerJson?.data;
 
-      if (userData && (userData.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
+      if (userData && (isFirstPull || userData.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
         this.lastSyncTimestamp = userData.lastUpdated || Date.now();
+        this.hasInitialPulledUsers[currentUserKey] = true;
         try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
         onRemoteUpdate(userData, partnerData);
       } else if (partnerData) {
+        if (isFirstPull) this.hasInitialPulledUsers[currentUserKey] = true;
         onRemoteUpdate(null as any, partnerData);
       }
     } catch {}

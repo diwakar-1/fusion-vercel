@@ -112,6 +112,7 @@ interface StudentOsContextType {
   currentWatchingVideo: { title: string; url: string; subject: string } | null;
   setCurrentWatchingVideo: (video: { title: string; url: string; subject: string } | null) => void;
   toggleLectureCompleted: (courseId: string, lectureId: string) => void;
+  markAllLecturesCompleted: (courseId: string, markComplete?: boolean) => void;
   activePlayingCourse: VideoCourse | null;
   setActivePlayingCourse: (course: VideoCourse | null) => void;
   activeLecture: PlaylistLecture | null;
@@ -929,13 +930,21 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
+  const hasHydratedFromCloud = useRef<boolean>(false);
+
   // Real-Time 1-Second Bi-Directional Cloud State Synchronizer (Web <-> Android App)
   useEffect(() => {
     if (!isAuthenticated) return;
 
+    // Safety fallback: allow normal cloud pushing after 3.5 seconds even if network is slow/offline
+    const fallbackTimer = setTimeout(() => {
+      hasHydratedFromCloud.current = true;
+    }, 3500);
+
     const stopSync = cloudSync.startAutoSync(
       () => currentUser,
       (remoteData, partnerData) => {
+        hasHydratedFromCloud.current = true;
         if (remoteData) {
           if (remoteData.profile) {
             setProfile(prev => {
@@ -1119,12 +1128,15 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     );
 
-    return () => stopSync();
+    return () => {
+      stopSync();
+      clearTimeout(fallbackTimer);
+    };
   }, [isAuthenticated, currentUser, playNotificationChime]);
 
   // Push local updates to Cloud Sync API on state mutation
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !hasHydratedFromCloud.current) return;
     cloudSync.pushState(currentUser, {
       profile,
       dailyTasks,
@@ -1209,6 +1221,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     if (isValid) {
+      hasHydratedFromCloud.current = false;
       setCurrentUser(user);
       setIsAuthenticated(true);
       localStorage.setItem('fusion_authenticated', 'true');
@@ -1480,6 +1493,35 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return c;
       });
       localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const markAllLecturesCompleted = (courseId: string, markComplete = true) => {
+    setCourses(prev => {
+      let newlyCompleted = 0;
+      const updated = prev.map(c => {
+        if (c.id === courseId && c.lectures) {
+          const updatedLectures = c.lectures.map(lec => {
+            if (markComplete && !lec.completed) newlyCompleted++;
+            return { ...lec, completed: markComplete };
+          });
+          const completedCount = markComplete ? updatedLectures.length : 0;
+          return {
+            ...c,
+            lectures: updatedLectures,
+            currentLesson: `Completed ${completedCount}/${updatedLectures.length} Lectures`
+          };
+        }
+        return c;
+      });
+      if (newlyCompleted > 0) {
+        confetti({ particleCount: 75, spread: 85 });
+        setProfile(p => ({ ...p, totalXp: p.totalXp + (newlyCompleted * 50) }));
+        markPlaylistVideoWatchedToday();
+      }
+      localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      cloudSync.pushState(currentUser, { courses: updated });
       return updated;
     });
   };
@@ -2659,6 +2701,7 @@ INSTRUCTIONS:
         currentWatchingVideo,
         setCurrentWatchingVideo: handleSetCurrentWatchingVideo,
         toggleLectureCompleted,
+        markAllLecturesCompleted,
         activePlayingCourse,
         setActivePlayingCourse,
         activeLecture,

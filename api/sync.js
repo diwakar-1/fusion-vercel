@@ -55,11 +55,96 @@ async function updateCloudDoc(user, payload, timestamp) {
   if (!docId) return false;
   try {
     const existing = await fetchCloudDoc(user);
+    const existingProfile = existing?.profile || {};
+    const payloadProfile = payload?.profile || {};
+
+    const mergedProfile = (payloadProfile && Object.keys(payloadProfile).length > 0) ? {
+      ...existingProfile,
+      ...payloadProfile,
+      name: (payloadProfile.name && payloadProfile.name.trim()) ? payloadProfile.name.trim() : (existingProfile.name || (user === 'ayush' ? 'Ayush' : 'Diwakar')),
+      college: (payloadProfile.college && payloadProfile.college.trim()) ? payloadProfile.college.trim() : (existingProfile.college || ''),
+      branch: (payloadProfile.branch && payloadProfile.branch.trim()) ? payloadProfile.branch.trim() : (existingProfile.branch || ''),
+      semester: (payloadProfile.semester && payloadProfile.semester.trim()) ? payloadProfile.semester.trim() : (existingProfile.semester || ''),
+      avatar: (payloadProfile.avatar && payloadProfile.avatar.trim()) ? payloadProfile.avatar.trim() : (existingProfile.avatar || ''),
+      handle: (payloadProfile.handle && payloadProfile.handle.trim()) ? payloadProfile.handle.trim() : (existingProfile.handle || `@${user}_dev`),
+      streakDays: Math.max(existingProfile.streakDays || 0, payloadProfile.streakDays || 0),
+      totalXp: Math.max(existingProfile.totalXp || 100, payloadProfile.totalXp || 100),
+      level: Math.max(existingProfile.level || 1, payloadProfile.level || 1),
+      todayStudiedMinutes: Math.max(existingProfile.todayStudiedMinutes || 0, payloadProfile.todayStudiedMinutes || 0),
+      dailyGoalHours: payloadProfile.dailyGoalHours || existingProfile.dailyGoalHours || 4.0
+    } : existingProfile;
+
+    // Merge notes by id - do not wipe existing notes if payload notes is empty
+    let mergedNotes = existing?.notes || [];
+    if (Array.isArray(payload.notes) && payload.notes.length > 0) {
+      mergedNotes = [...mergedNotes];
+      payload.notes.forEach(pn => {
+        const idx = mergedNotes.findIndex(en => en.id === pn.id);
+        if (idx >= 0) mergedNotes[idx] = { ...mergedNotes[idx], ...pn };
+        else mergedNotes.unshift(pn);
+      });
+    }
+
+    // Merge courses by id - do not wipe existing courses if payload courses is empty
+    let mergedCourses = existing?.courses || [];
+    if (Array.isArray(payload.courses) && payload.courses.length > 0) {
+      mergedCourses = [...mergedCourses];
+      payload.courses.forEach(pc => {
+        const idx = mergedCourses.findIndex(ec => ec.id === pc.id);
+        if (idx >= 0) {
+          const existingLecs = mergedCourses[idx].lectures || [];
+          const payloadLecs = pc.lectures || [];
+          const mergedLecs = payloadLecs.length > 0 ? payloadLecs : existingLecs;
+          mergedCourses[idx] = { ...mergedCourses[idx], ...pc, lectures: mergedLecs };
+        } else {
+          mergedCourses.unshift(pc);
+        }
+      });
+    }
+
+    // Daily tasks
+    const mergedDailyTasks = (Array.isArray(payload.dailyTasks) && payload.dailyTasks.length > 0)
+      ? payload.dailyTasks
+      : (existing?.dailyTasks || []);
+
+    // Study logs (preserve all study sessions across devices)
+    let mergedStudyLogs = existing?.studyLogs || [];
+    if (Array.isArray(payload.studyLogs) && payload.studyLogs.length > 0) {
+      const existingIds = new Set(mergedStudyLogs.map(s => s.id));
+      const toAdd = payload.studyLogs.filter(s => !existingIds.has(s.id));
+      mergedStudyLogs = [...mergedStudyLogs, ...toAdd];
+    }
+
+    // Partner chat messages
+    let mergedChat = existing?.partnerChatMessages || [];
+    if (Array.isArray(payload.partnerChatMessages) && payload.partnerChatMessages.length > 0) {
+      const existingIds = new Set(mergedChat.map(m => m.id));
+      const toAdd = payload.partnerChatMessages.filter(m => !existingIds.has(m.id));
+      mergedChat = [...mergedChat, ...toAdd];
+    }
+
     const dataToSave = {
       ...(existing || {}),
       ...payload,
-      geminiApiKey: payload.geminiApiKey !== undefined ? payload.geminiApiKey : (existing?.geminiApiKey || undefined),
-      youtubeApiKey: payload.youtubeApiKey !== undefined ? payload.youtubeApiKey : (existing?.youtubeApiKey || undefined),
+      profile: mergedProfile,
+      notes: mergedNotes,
+      courses: mergedCourses,
+      dailyTasks: mergedDailyTasks,
+      studyLogs: mergedStudyLogs,
+      partnerChatMessages: mergedChat,
+      dsaTopics: (Array.isArray(payload.dsaTopics) && payload.dsaTopics.length > 0) ? payload.dsaTopics : (existing?.dsaTopics || []),
+      habits: (Array.isArray(payload.habits) && payload.habits.length > 0) ? payload.habits : (existing?.habits || []),
+      goals: (Array.isArray(payload.goals) && payload.goals.length > 0) ? payload.goals : (existing?.goals || []),
+      mlMilestones: (Array.isArray(payload.mlMilestones) && payload.mlMilestones.length > 0) ? payload.mlMilestones : (existing?.mlMilestones || []),
+      timetableSchedule: (Array.isArray(payload.timetableSchedule) && payload.timetableSchedule.length > 0) ? payload.timetableSchedule : (existing?.timetableSchedule || []),
+      pdfQuestionSheets: (Array.isArray(payload.pdfQuestionSheets) && payload.pdfQuestionSheets.length > 0) ? payload.pdfQuestionSheets : (existing?.pdfQuestionSheets || []),
+      geminiApiKey: (payload.geminiApiKey && typeof payload.geminiApiKey === 'string' && payload.geminiApiKey.trim())
+        ? payload.geminiApiKey.trim()
+        : (existing?.geminiApiKey || undefined),
+      youtubeApiKey: (payload.youtubeApiKey && typeof payload.youtubeApiKey === 'string' && payload.youtubeApiKey.trim())
+        ? payload.youtubeApiKey.trim()
+        : (existing?.youtubeApiKey || undefined),
+      ayushPassword: payload.ayushPassword || existing?.ayushPassword,
       user,
       lastUpdated: timestamp || Date.now()
     };

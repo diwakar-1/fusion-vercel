@@ -44,6 +44,7 @@ export const CoursePlaylists: React.FC = () => {
     currentWatchingVideo,
     setCurrentWatchingVideo,
     toggleLectureCompleted,
+    markAllLecturesCompleted,
     profile,
     activeFriend,
     geminiApiKey,
@@ -321,6 +322,7 @@ export const CoursePlaylists: React.FC = () => {
 
   const filteredLectures = lecturesList.filter(l => {
     if (filterTab === 'Completed') return l.completed;
+    if (filterTab === 'Series') return !l.completed;
     return true;
   });
 
@@ -749,6 +751,41 @@ export const CoursePlaylists: React.FC = () => {
                   <span>{activeLecture.completed ? 'Completed (+50 XP)' : 'Mark Lecture Done'}</span>
                 </button>
 
+                {/* Mark Whole Series Complete Button */}
+                <button
+                  onClick={() => {
+                    if (activeCourse) {
+                      const allDone = completedCount === lecturesList.length && lecturesList.length > 0;
+                      markAllLecturesCompleted(activeCourse.id, !allDone);
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '10px 18px',
+                    borderRadius: 'var(--radius-pill)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    fontFamily: 'var(--font-tech)',
+                    fontWeight: 700,
+                    fontSize: '0.86rem',
+                    cursor: 'pointer',
+                    background: completedCount === lecturesList.length && lecturesList.length > 0
+                      ? 'rgba(16, 185, 129, 0.15)'
+                      : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    color: completedCount === lecturesList.length && lecturesList.length > 0 ? '#059669' : '#FFFFFF',
+                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.22)'
+                  }}
+                  title={completedCount === lecturesList.length && lecturesList.length > 0 ? 'Click to reset all series lectures' : 'Mark all lectures in this series as completed'}
+                >
+                  <CheckCircle2 size={17} />
+                  <span>
+                    {completedCount === lecturesList.length && lecturesList.length > 0
+                      ? 'All Series Completed ✓ (Reset)'
+                      : `Complete Whole Series (${completedCount}/${lecturesList.length})`}
+                  </span>
+                </button>
+
                 {/* Remove Course Playlist Button */}
                 <button
                   onClick={() => {
@@ -852,25 +889,73 @@ export const CoursePlaylists: React.FC = () => {
             </div>
 
             {/* Filter Tags */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              {(['All', 'Series', 'Completed'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setFilterTab(tab)}
-                  style={{
-                    padding: '4px 12px',
-                    borderRadius: 'var(--radius-pill)',
-                    border: 'none',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: filterTab === tab ? 'var(--charcoal-pill)' : 'rgba(0, 0, 0, 0.06)',
-                    color: filterTab === tab ? '#FFFFFF' : 'var(--text-secondary)'
-                  }}
-                >
-                  {tab}
-                </button>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['All', 'Series', 'Completed'] as const).map(tab => {
+                  const badgeCount =
+                    tab === 'All' ? lecturesList.length :
+                    tab === 'Series' ? (lecturesList.length - completedCount) :
+                    completedCount;
+
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => setFilterTab(tab)}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: 'var(--radius-pill)',
+                        border: 'none',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: filterTab === tab ? 'var(--charcoal-pill)' : 'rgba(0, 0, 0, 0.06)',
+                        color: filterTab === tab ? '#FFFFFF' : 'var(--text-secondary)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}
+                    >
+                      <span>{tab === 'Series' ? 'In Progress Series' : tab}</span>
+                      <span
+                        style={{
+                          fontSize: '0.66rem',
+                          padding: '1px 5px',
+                          borderRadius: '8px',
+                          background: filterTab === tab ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.08)',
+                          color: filterTab === tab ? '#FFFFFF' : 'var(--text-muted)'
+                        }}
+                      >
+                        {badgeCount}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Quick Mark All Completed series action */}
+              <button
+                onClick={() => {
+                  if (activeCourse) {
+                    const allDone = completedCount === lecturesList.length && lecturesList.length > 0;
+                    markAllLecturesCompleted(activeCourse.id, !allDone);
+                  }
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#10B981',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}
+              >
+                <CheckCircle2 size={13} />
+                <span>{completedCount === lecturesList.length && lecturesList.length > 0 ? 'Reset Series' : 'Mark All Completed'}</span>
+              </button>
             </div>
           </div>
 
@@ -884,6 +969,55 @@ export const CoursePlaylists: React.FC = () => {
               flexDirection: 'column'
             }}
           >
+            {filteredLectures.length === 0 && (
+              <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                {filterTab === 'Completed' ? (
+                  <div>
+                    <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🎯</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+                      No Completed Lectures Yet
+                    </div>
+                    <div style={{ fontSize: '0.8rem', marginBottom: 16 }}>
+                      Mark lectures done as you study, or complete the entire series at once!
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (activeCourse) markAllLecturesCompleted(activeCourse.id, true);
+                      }}
+                      className="charcoal-pill-btn"
+                      style={{ padding: '8px 16px', fontSize: '0.8rem' }}
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>Mark All Completed (+XP)</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>🏆</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#10B981', marginBottom: 4 }}>
+                      All Series Lectures Finished!
+                    </div>
+                    <div style={{ fontSize: '0.8rem', marginBottom: 12 }}>
+                      You've conquered every lecture in this series!
+                    </div>
+                    <button
+                      onClick={() => setFilterTab('All')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 'var(--radius-pill)',
+                        border: '1px solid rgba(0,0,0,0.1)',
+                        background: '#FFFFFF',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      View All Lectures
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {filteredLectures.map((lec, idx) => {
               const isCurrentPlaying = activeLecture.id === lec.id;
 
