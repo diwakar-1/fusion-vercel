@@ -206,6 +206,7 @@ export const DashboardOverview: React.FC = () => {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <h2
+              className="dashboard-greeting-title"
               style={{
                 fontFamily: "var(--font-dashboard), 'Nunito', sans-serif",
                 fontSize: '2.5rem',
