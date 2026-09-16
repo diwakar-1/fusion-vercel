@@ -1006,6 +1006,8 @@ export const AnalyticsHeatmap: React.FC = () => {
               return (
                 <div
                   key={idx}
+                  onClick={() => setHoveredDay({ date: day.date, count: day.count })}
+                  onTouchStart={() => setHoveredDay({ date: day.date, count: day.count })}
                   onMouseEnter={() => setHoveredDay({ date: day.date, count: day.count })}
                   onMouseLeave={() => setHoveredDay(null)}
                   style={{

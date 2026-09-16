@@ -155,18 +155,21 @@ export const CoursePlaylists: React.FC = () => {
     }, 1500);
   };
 
+  const [fetchedLecturesCache, setFetchedLecturesCache] = useState<PlaylistLecture[]>([]);
+
   // Auto-fetch the entire playlist (all real videos) using YouTube Data API & FUSE
   const handleAutoFetchPlaylist = async () => {
     if (!newUrl.trim()) return;
     setIsFetchingPlaylist(true);
     try {
-      // 1. Try fetching directly via YouTube Data API v3 or smart fallback
+      // 1. Try fetching directly via YouTube Data API v3 or public RSS
       const ytLectures = await YouTubeService.fetchPlaylistVideos(
         newUrl.trim(),
         newTitle.trim() || newSubject,
         youtubeApiKey
       );
       if (ytLectures && ytLectures.length > 0) {
+        setFetchedLecturesCache(ytLectures);
         const textLines = ytLectures.map((lec, idx) => `${idx + 1}. ${lec.title} (${lec.duration})`);
         setNewLecturesText(textLines.join('\n'));
         setIsFetchingPlaylist(false);
@@ -180,6 +183,7 @@ export const CoursePlaylists: React.FC = () => {
         newTitle.trim() || 'Course Playlist'
       );
       if (fullLectures && fullLectures.length > 0) {
+        setFetchedLecturesCache(fullLectures);
         const textLines = fullLectures.map((lec, idx) => `${idx + 1}. ${lec.title} (${lec.duration})`);
         setNewLecturesText(textLines.join('\n'));
       }
@@ -219,16 +223,19 @@ export const CoursePlaylists: React.FC = () => {
 
     let lectures: PlaylistLecture[] = [];
 
-    if (lines.length > 0) {
+    if (fetchedLecturesCache.length > 0 && fetchedLecturesCache.length === lines.length) {
+      // Use cached full lectures with true video IDs and durations
+      lectures = fetchedLecturesCache;
+    } else if (lines.length > 0) {
       lectures = lines.map((line, idx) => ({
         id: `lec_${idx + 1}_${Date.now()}`,
         title: line.replace(/^[\d+.-]+\s*/, ''),
         duration: `${20 + ((idx * 7) % 25)}:00`,
-        videoId: mainVideoId,
+        videoId: fetchedLecturesCache[idx]?.videoId || mainVideoId,
         completed: false
       }));
     } else {
-      // Fetch whole complete playlist (never leave empty 0/0 lectures)
+      // Fetch whole complete playlist automatically
       setIsFetchingPlaylist(true);
       try {
         const ytLectures = await YouTubeService.fetchPlaylistVideos(
@@ -250,8 +257,8 @@ export const CoursePlaylists: React.FC = () => {
         }
       } catch (err) {
         lectures = [
-          { id: `lec_1_${Date.now()}`, title: `${newTitle} - Lecture 1: Core Architecture`, duration: '28:40', videoId: mainVideoId, completed: false },
-          { id: `lec_2_${Date.now()}`, title: `${newTitle} - Lecture 2: Implementation & Practice`, duration: '35:10', videoId: mainVideoId, completed: false }
+          { id: `lec_1_${Date.now()}`, title: `${newTitle} - Part 1: Core Architecture`, duration: '28:40', videoId: mainVideoId, completed: false },
+          { id: `lec_2_${Date.now()}`, title: `${newTitle} - Part 2: Implementation & Code Practice`, duration: '35:10', videoId: mainVideoId, completed: false }
         ];
       } finally {
         setIsFetchingPlaylist(false);
@@ -260,7 +267,7 @@ export const CoursePlaylists: React.FC = () => {
 
     if (!lectures || lectures.length === 0) {
       lectures = [
-        { id: `lec_1_${Date.now()}`, title: `${newTitle} - Lecture 1: Core Architecture`, duration: '28:40', videoId: mainVideoId, completed: false }
+        { id: `lec_1_${Date.now()}`, title: `${newTitle} - Part 1: Core Architecture`, duration: '28:40', videoId: mainVideoId, completed: false }
       ];
     }
 
@@ -280,6 +287,7 @@ export const CoursePlaylists: React.FC = () => {
     setNewTitle('');
     setNewUrl('');
     setNewLecturesText('');
+    setFetchedLecturesCache([]);
     setShowAddModal(false);
     setSelectedCourseIndex(0);
     setFilterTab('All');
@@ -355,6 +363,100 @@ export const CoursePlaylists: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Quick Add Playlist Bar (Top-level, Zero scrolling needed on Android) */}
+      <GlassCard
+        style={{
+          padding: '14px 18px',
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(254, 242, 242, 0.92) 100%)',
+          border: '1.5px solid rgba(239, 68, 68, 0.25)',
+          boxShadow: '0 4px 16px -2px rgba(239, 68, 68, 0.08)'
+        }}
+      >
+        <form
+          onSubmit={handleCreateCourse}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <YoutubeIcon size={18} color="#EF4444" />
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#18181B' }}>
+              Add Playlist:
+            </span>
+          </div>
+
+          <input
+            type="url"
+            placeholder="Paste YouTube Playlist link (e.g. https://youtube.com/playlist?list=...)"
+            value={newUrl}
+            onChange={e => setNewUrl(e.target.value)}
+            required
+            style={{
+              flex: '2 1 240px',
+              padding: '9px 14px',
+              borderRadius: 'var(--radius-pill)',
+              border: '1.5px solid rgba(239, 68, 68, 0.3)',
+              fontSize: '0.88rem',
+              outline: 'none',
+              background: '#FFFFFF'
+            }}
+          />
+
+          <input
+            type="text"
+            placeholder="Course Title (Optional)"
+            value={newTitle}
+            onChange={e => setNewTitle(e.target.value)}
+            style={{
+              flex: '1 1 160px',
+              padding: '9px 14px',
+              borderRadius: 'var(--radius-pill)',
+              border: '1px solid rgba(0,0,0,0.12)',
+              fontSize: '0.88rem',
+              outline: 'none',
+              background: '#FFFFFF'
+            }}
+          />
+
+          <select
+            value={newSubject}
+            onChange={e => setNewSubject(e.target.value)}
+            style={{
+              padding: '9px 12px',
+              borderRadius: 'var(--radius-pill)',
+              border: '1px solid rgba(0,0,0,0.12)',
+              fontSize: '0.85rem',
+              background: '#FFFFFF',
+              fontWeight: 600
+            }}
+          >
+            <option value="DSA">DSA</option>
+            <option value="Machine Learning">AIML</option>
+            <option value="Operating Systems">OS</option>
+            <option value="Web Dev">Web Dev</option>
+            <option value="System Design">System Design</option>
+          </select>
+
+          <button
+            type="submit"
+            disabled={!newUrl.trim() || isFetchingPlaylist}
+            className="charcoal-pill-btn"
+            style={{
+              padding: '9px 18px',
+              fontSize: '0.86rem',
+              background: 'linear-gradient(135deg, #1E1E24 0%, #EF4444 100%)',
+              flexShrink: 0
+            }}
+          >
+            <Plus size={15} />
+            <span>{isFetchingPlaylist ? 'Importing...' : 'Add Whole Playlist'}</span>
+          </button>
+        </form>
+      </GlassCard>
 
       {/* Course Switcher Pills */}
       {/* Top Course Filter Strip / Tabs with Remove Playlist Option */}
@@ -1167,11 +1269,12 @@ export const CoursePlaylists: React.FC = () => {
             inset: 0,
             zIndex: 200,
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             justifyContent: 'center',
-            background: 'rgba(15, 23, 42, 0.65)',
+            background: 'rgba(15, 23, 42, 0.7)',
             backdropFilter: 'blur(10px)',
-            padding: 20
+            padding: '16px 12px',
+            overflowY: 'auto'
           }}
         >
           <div
@@ -1180,8 +1283,11 @@ export const CoursePlaylists: React.FC = () => {
               maxWidth: '560px',
               width: '100%',
               background: '#FFFFFF',
-              borderRadius: '28px',
-              padding: '32px',
+              borderRadius: '24px',
+              padding: '20px 22px',
+              margin: '12px auto',
+              maxHeight: '88vh',
+              overflowY: 'auto',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
             }}
           >

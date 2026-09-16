@@ -25,6 +25,7 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@rollup/wasm-node": "^4.63.3",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^26.5.1",
     "@types/react": "^19.0.10",

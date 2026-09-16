@@ -32,11 +32,20 @@ export interface SyncPayload {
   notes: any[];
   timetableSchedule: any;
   courses?: any[];          // Playlists synced between Android & Web
+  pdfQuestionSheets?: any[]; // PDF and Coding Question sheets synced
+  habits?: any[];           // Daily Habits synced
+  goals?: any[];            // Goals synced
+  mlMilestones?: any[];     // Machine Learning Milestones synced
   geminiApiKey?: string;    // API keys synced so Android keys appear on Web
   youtubeApiKey?: string;
   activeTimerState?: any;
   studyLogs?: any[];
   completedProblemIds?: string[];
+  partnerChatMessages?: Array<{ id: string; sender: string; text: string; timestamp: string }>;
+  lastNudge?: { sender: string; type: string; timestamp: number };
+  isVacationPaused?: boolean;
+  hasWatchedPlaylistVideoToday?: boolean;
+  ayushPassword?: string;
   updatedAt: number;
 }
 
@@ -209,6 +218,80 @@ class CloudSyncService {
         this.syncTimer = null;
       }
     };
+  }
+
+  /**
+   * Fetch Ayush's permanent password from Cloud Sync Store if missing locally
+   */
+  async fetchAyushPassword(): Promise<string | null> {
+    try {
+      const endpoint = `${getSyncEndpoint()}?user=ayush`;
+      const res = await fetch(endpoint, { headers: { 'Accept': 'application/json' } });
+      if (res.ok) {
+        const json = await res.json();
+        if (json?.data?.ayushPassword) return json.data.ayushPassword;
+      }
+    } catch {}
+
+    try {
+      const docId = CLOUD_DOC_IDS['ayush'];
+      const res = await fetch(`https://api.restful-api.dev/objects/${docId}`);
+      if (res.ok) {
+        const json = await res.json();
+        return json?.data?.ayushPassword || null;
+      }
+    } catch {}
+
+    return null;
+  }
+
+  /**
+   * Save Ayush's permanent password to Cloud Sync Store
+   */
+  async saveAyushPassword(password: string): Promise<boolean> {
+    const clean = password.trim();
+    if (!clean) return false;
+
+    try {
+      const endpoint = getSyncEndpoint();
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: 'ayush',
+          payload: { ayushPassword: clean },
+          timestamp: Date.now()
+        })
+      });
+    } catch {}
+
+    try {
+      const docId = CLOUD_DOC_IDS['ayush'];
+      let existingData: any = {};
+      try {
+        const getRes = await fetch(`https://api.restful-api.dev/objects/${docId}`);
+        if (getRes.ok) {
+          const json = await getRes.json();
+          existingData = json?.data || {};
+        }
+      } catch {}
+
+      const res = await fetch(`https://api.restful-api.dev/objects/${docId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'fusion_cloud_store_ayush',
+          data: {
+            ...existingData,
+            ayushPassword: clean,
+            lastUpdated: Date.now()
+          }
+        })
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 }
 

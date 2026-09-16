@@ -1,0 +1,29 @@
+{
+  "name": "FUSION",
+  "short_name": "FUSION",
+  "description": "Private Co-Study and High Performance Learning Ecosystem for Diwakar & Ayush.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1E1E24",
+  "theme_color": "#1E1E24",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/LOGO-Android.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/LOGO-Android.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/LOGO.gif",
+      "sizes": "128x128",
+      "type": "image/gif"
+    }
+  ]
+}

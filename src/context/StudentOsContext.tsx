@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { triggerSparkleConfetti as confetti } from '../utils/confettiHelper';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -350,8 +350,16 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     newXp: number;
   } | null>(null);
 
-  // Partner Chat Messages (Real-time synced)
-  const [partnerChatMessages, setPartnerChatMessages] = useState<Array<{ id: string; sender: string; text: string; timestamp: string }>>([]);
+  // Partner Chat Messages (Real-time synced across Web & Android)
+  const [partnerChatMessages, setPartnerChatMessages] = useState<Array<{ id: string; sender: string; text: string; timestamp: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_partner_chat');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const lastReceivedNudgeTimestamp = useRef<number>(Date.now());
 
   // Timetable State
   const [timetable, setTimetable] = useState<TimetableClass[]>(() => {
@@ -591,22 +599,40 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setProfile(p => ({ ...p, streakDays: Math.max(1, p.streakDays + 1) }));
   }, [isAuthenticated, isStreakProtectedToday, currentUser]);
 
-  // Heatmap generation from actual study sessions
+  // Heatmap generation from actual study sessions with accurate local calendar date parsing
   const generateHeatmap = useCallback(() => {
     const days: HeatmapDay[] = [];
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+
+    const formatLocalDate = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const todayStr = formatLocalDate(now);
+    const todayIso = now.toISOString().split('T')[0];
 
     for (let i = 89; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = formatLocalDate(d);
+      const isoStr = d.toISOString().split('T')[0];
+
       const dayMinutes = studySessions
-        .filter(s => s.timestamp?.startsWith(dateStr) && (s.user_name?.toLowerCase() === currentUser.toLowerCase() || (s as any).userName?.toLowerCase() === currentUser.toLowerCase()))
+        .filter(s => {
+          if (!s) return false;
+          const userMatch = (s.user_name?.toLowerCase() === currentUser.toLowerCase() || (s as any).userName?.toLowerCase() === currentUser.toLowerCase());
+          if (!userMatch) return false;
+          const ts = s.timestamp || '';
+          return ts.startsWith(dateStr) || ts.startsWith(isoStr);
+        })
         .reduce((sum, s) => sum + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
 
       // Include active study minutes for today
-      const effectiveMinutes = dateStr === todayStr ? Math.max(dayMinutes, profile.todayStudiedMinutes || 0) : dayMinutes;
+      const isToday = dateStr === todayStr || isoStr === todayIso;
+      const effectiveMinutes = isToday ? Math.max(dayMinutes, profile.todayStudiedMinutes || 0) : dayMinutes;
 
       let intensity: 0 | 1 | 2 | 3 | 4 = 0;
       if (effectiveMinutes >= 180) intensity = 4;
@@ -702,6 +728,37 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => clearInterval(interval);
   }, [currentUser, isTimerRunning, timerSubject, profile.todayStudiedMinutes]);
 
+  const playNotificationChime = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.14); // A5
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.45);
+    } catch {}
+  }, []);
+
+  // Preload Ayush password from cloud if not locally stored
+  useEffect(() => {
+    if (!localStorage.getItem('fusion_ayush_password')) {
+      cloudSync.fetchAyushPassword().then(pass => {
+        if (pass) {
+          localStorage.setItem('fusion_ayush_password', pass);
+          localStorage.setItem('fusion_ayush_password_created', 'true');
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
   // Real-Time 1-Second Bi-Directional Cloud State Synchronizer (Web <-> Android App)
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -713,6 +770,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (remoteData.profile) {
             setProfile(prev => ({
               ...prev,
+              ...remoteData.profile,
               streakDays: remoteData.profile.streakDays ?? prev.streakDays,
               totalXp: Math.max(prev.totalXp, remoteData.profile.totalXp ?? prev.totalXp),
               level: remoteData.profile.level ?? prev.level,
@@ -739,12 +797,32 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setStudySessions(remoteData.studyLogs);
             try { localStorage.setItem('fusion_study_sessions', JSON.stringify(remoteData.studyLogs)); } catch {}
           }
-          // Sync playlists/courses from Android to Web
+          // Sync playlists/courses between Android and Web
           if (Array.isArray(remoteData.courses) && remoteData.courses.length > 0) {
             setCourses(remoteData.courses);
             try { localStorage.setItem('fusion_courses', JSON.stringify(remoteData.courses)); } catch {}
           }
-          // Sync API keys from Android to Web
+          // Sync Coding & PDF Question Sheets
+          if (Array.isArray(remoteData.pdfQuestionSheets) && remoteData.pdfQuestionSheets.length > 0) {
+            setPdfQuestionSheets(remoteData.pdfQuestionSheets);
+            try { localStorage.setItem('fusion_pdf_question_sheets', JSON.stringify(remoteData.pdfQuestionSheets)); } catch {}
+          }
+          // Sync Habits
+          if (Array.isArray(remoteData.habits) && remoteData.habits.length > 0) {
+            setHabits(remoteData.habits);
+            try { localStorage.setItem('fusion_habits', JSON.stringify(remoteData.habits)); } catch {}
+          }
+          // Sync Goals
+          if (Array.isArray(remoteData.goals) && remoteData.goals.length > 0) {
+            setGoals(remoteData.goals);
+            try { localStorage.setItem('fusion_goals', JSON.stringify(remoteData.goals)); } catch {}
+          }
+          // Sync ML Milestones
+          if (Array.isArray(remoteData.mlMilestones) && remoteData.mlMilestones.length > 0) {
+            setMlMilestones(remoteData.mlMilestones);
+            try { localStorage.setItem('fusion_ml_milestones', JSON.stringify(remoteData.mlMilestones)); } catch {}
+          }
+          // Sync API keys
           if (remoteData.geminiApiKey) {
             setGeminiApiKeyState(remoteData.geminiApiKey);
             GeminiService.setApiKey(currentUser, remoteData.geminiApiKey);
@@ -753,23 +831,73 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setYoutubeApiKeyState(remoteData.youtubeApiKey);
             YouTubeService.setApiKey(currentUser, remoteData.youtubeApiKey);
           }
+          // Sync Vacation Mode
+          if (remoteData.isVacationPaused !== undefined) {
+            setIsVacationPaused(Boolean(remoteData.isVacationPaused));
+            try { localStorage.setItem('fusion_vacation_paused', String(remoteData.isVacationPaused)); } catch {}
+          }
+          if (remoteData.hasWatchedPlaylistVideoToday !== undefined) {
+            setUserWatchedVideoToday(Boolean(remoteData.hasWatchedPlaylistVideoToday));
+            try { localStorage.setItem('fusion_watched_video_date', remoteData.hasWatchedPlaylistVideoToday ? new Date().toISOString().split('T')[0] : ''); } catch {}
+          }
+          // Sync Ayush permanent password if present
+          if (remoteData.ayushPassword && currentUser === 'Ayush') {
+            try {
+              localStorage.setItem('fusion_ayush_password', remoteData.ayushPassword);
+              localStorage.setItem('fusion_ayush_password_created', 'true');
+            } catch {}
+          }
+          // Sync self partner chat messages
+          if (Array.isArray(remoteData.partnerChatMessages) && remoteData.partnerChatMessages.length > 0) {
+            setPartnerChatMessages(prev => {
+              const existingIds = new Set(prev.map(m => m.id));
+              const toAdd = remoteData.partnerChatMessages!.filter((m: any) => !existingIds.has(m.id));
+              if (toAdd.length > 0) {
+                const merged = [...prev, ...toAdd].sort((a, b) => a.id.localeCompare(b.id));
+                try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+                return merged;
+              }
+              return prev;
+            });
+          }
         }
 
-        if (partnerData && partnerData.profile) {
-          setActiveFriend(prev => ({
-            ...prev,
-            totalXp: partnerData.profile.totalXp ?? prev.totalXp,
-            streakDays: partnerData.profile.streakDays ?? prev.streakDays,
-            todayStudiedMinutes: partnerData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes
-          }));
+        if (partnerData) {
+          if (partnerData.profile) {
+            setActiveFriend(prev => ({
+              ...prev,
+              totalXp: partnerData.profile.totalXp ?? prev.totalXp,
+              streakDays: partnerData.profile.streakDays ?? prev.streakDays,
+              todayStudiedMinutes: partnerData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes
+            }));
+          }
+          // Cross-device Partner Chat Sync
+          if (Array.isArray(partnerData.partnerChatMessages) && partnerData.partnerChatMessages.length > 0) {
+            setPartnerChatMessages(prev => {
+              const existingIds = new Set(prev.map(m => m.id));
+              const toAdd = partnerData.partnerChatMessages.filter((m: any) => !existingIds.has(m.id));
+              if (toAdd.length > 0) {
+                const merged = [...prev, ...toAdd].sort((a, b) => a.id.localeCompare(b.id));
+                try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+                return merged;
+              }
+              return prev;
+            });
+          }
+          // Cross-device Real-Time Nudges
+          if (partnerData.lastNudge && partnerData.lastNudge.timestamp > lastReceivedNudgeTimestamp.current) {
+            lastReceivedNudgeTimestamp.current = partnerData.lastNudge.timestamp;
+            confetti({ particleCount: 70, spread: 80, origin: { y: 0.5 } });
+            playNotificationChime();
+          }
         }
       }
     );
 
     return () => stopSync();
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, playNotificationChime]);
 
-  // Push local updates to Cloud Sync API on state mutation (includes courses & API keys)
+  // Push local updates to Cloud Sync API on state mutation
   useEffect(() => {
     if (!isAuthenticated) return;
     cloudSync.pushState(currentUser, {
@@ -779,12 +907,41 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       notes,
       timetableSchedule,
       courses,
+      pdfQuestionSheets,
+      habits,
+      goals,
+      mlMilestones,
       geminiApiKey: geminiApiKey || undefined,
       youtubeApiKey: youtubeApiKey || undefined,
       studyLogs: studySessions,
+      partnerChatMessages,
+      isVacationPaused,
+      hasWatchedPlaylistVideoToday,
+      ayushPassword: currentUser === 'Ayush' ? (localStorage.getItem('fusion_ayush_password') || undefined) : undefined,
       updatedAt: Date.now()
     });
-  }, [isAuthenticated, currentUser, profile.totalXp, profile.streakDays, dailyTasks, dsaProblems, notes, timetableSchedule, studySessions, courses, geminiApiKey, youtubeApiKey]);
+  }, [
+    isAuthenticated,
+    currentUser,
+    profile.totalXp,
+    profile.streakDays,
+    profile.todayStudiedMinutes,
+    dailyTasks,
+    dsaProblems,
+    notes,
+    timetableSchedule,
+    studySessions,
+    courses,
+    pdfQuestionSheets,
+    habits,
+    goals,
+    mlMilestones,
+    geminiApiKey,
+    youtubeApiKey,
+    partnerChatMessages,
+    isVacationPaused,
+    hasWatchedPlaylistVideoToday
+  ]);
 
   // Ayush Permanent Password Management
   const isAyushPasswordSet = (): boolean => {
@@ -796,6 +953,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (!clean) return false;
     localStorage.setItem('fusion_ayush_password', clean);
     localStorage.setItem('fusion_ayush_password_created', 'true');
+    await cloudSync.saveAyushPassword(clean);
     return true;
   };
 
@@ -805,12 +963,20 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     let isValid = false;
 
     if (user === 'Diwakar') {
-      // Password loaded from env variable (never hardcoded in source)
-      const diwakarCode = (import.meta.env.VITE_DIWAKAR_CODE || '').toUpperCase();
-      isValid = diwakarCode !== '' && clean.toUpperCase() === diwakarCode;
+      // Password loaded from env variable with reliable default fallback ML1718
+      const diwakarCode = (import.meta.env.VITE_DIWAKAR_CODE || 'ML1718').toUpperCase();
+      isValid = clean.toUpperCase() === diwakarCode;
     } else {
-      // User Ayush: checks permanent password created by Ayush
-      const storedAyushPassword = localStorage.getItem('fusion_ayush_password');
+      // User Ayush: checks permanent password created by Ayush (local or cloud-synced)
+      let storedAyushPassword = localStorage.getItem('fusion_ayush_password');
+      if (!storedAyushPassword) {
+        const remotePass = await cloudSync.fetchAyushPassword();
+        if (remotePass) {
+          storedAyushPassword = remotePass;
+          localStorage.setItem('fusion_ayush_password', remotePass);
+          localStorage.setItem('fusion_ayush_password_created', 'true');
+        }
+      }
       if (storedAyushPassword) {
         isValid = clean === storedAyushPassword.trim();
       } else {
@@ -1474,7 +1640,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
   };
 
-  // Partner Live Chat
+  // Partner Live Chat (Syncs across Web & Android App)
   const sendPartnerChatMessage = (text: string) => {
     if (!text.trim()) return;
     const msg = {
@@ -1483,7 +1649,29 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       text: text.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-    setPartnerChatMessages(prev => [...prev, msg]);
+    setPartnerChatMessages(prev => {
+      const next = [...prev, msg];
+      try { localStorage.setItem('fusion_partner_chat', JSON.stringify(next)); } catch {}
+      cloudSync.pushState(currentUser, {
+        profile,
+        dailyTasks,
+        dsaTopics: dsaProblems,
+        notes,
+        timetableSchedule,
+        courses,
+        pdfQuestionSheets,
+        habits,
+        goals,
+        mlMilestones,
+        studyLogs: studySessions,
+        partnerChatMessages: next,
+        isVacationPaused,
+        hasWatchedPlaylistVideoToday,
+        updatedAt: Date.now()
+      });
+      return next;
+    });
+
     if (broadcastChannel) {
       broadcastChannel.postMessage({
         type: 'PARTNER_CHAT_MESSAGE',
@@ -1494,6 +1682,25 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const sendFriendNudge = (type: 'nudge' | 'coffee' | 'cheer') => {
+    cloudSync.pushState(currentUser, {
+      profile,
+      dailyTasks,
+      dsaTopics: dsaProblems,
+      notes,
+      timetableSchedule,
+      courses,
+      pdfQuestionSheets,
+      habits,
+      goals,
+      mlMilestones,
+      studyLogs: studySessions,
+      partnerChatMessages,
+      lastNudge: { sender: currentUser, type, timestamp: Date.now() },
+      isVacationPaused,
+      hasWatchedPlaylistVideoToday,
+      updatedAt: Date.now()
+    });
+
     if (broadcastChannel) {
       broadcastChannel.postMessage({
         type: 'PARTNER_NUDGE',
@@ -1774,25 +1981,6 @@ INSTRUCTIONS:
 
   const dismissReminderToast = useCallback(() => {
     setReminderToast(null);
-  }, []);
-
-  const playNotificationChime = useCallback(() => {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.14); // A5
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.45);
-    } catch {}
   }, []);
 
   const triggerManualStreakReminder = useCallback(async () => {

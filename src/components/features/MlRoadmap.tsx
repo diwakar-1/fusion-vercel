@@ -25,6 +25,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { YouTubeService } from '../../services/youtube';
+import { GeminiService } from '../../services/gemini';
 
 // Curated Daily Suggested Machine Learning Masterclasses & Playlists across all Phases
 const SUGGESTED_ML_PLAYLISTS: VideoCourse[] = [
@@ -126,6 +127,7 @@ export const MlRoadmap: React.FC = () => {
     toggleLectureCompleted,
     profile,
     activeFriend,
+    geminiApiKey,
     youtubeApiKey
   } = useStudentOs();
 
@@ -213,6 +215,17 @@ export const MlRoadmap: React.FC = () => {
         lectures = fetched;
         videoId = fetched[0].videoId;
         embed = `https://www.youtube.com/embed/${videoId}`;
+      } else {
+        const fullLectures = await GeminiService.fetchFullPlaylistWithFuse(
+          geminiApiKey,
+          url,
+          title
+        );
+        if (fullLectures && fullLectures.length > 0) {
+          lectures = fullLectures;
+          if (fullLectures[0]?.videoId) videoId = fullLectures[0].videoId;
+          embed = `https://www.youtube.com/embed/${videoId}`;
+        }
       }
     } catch {}
 

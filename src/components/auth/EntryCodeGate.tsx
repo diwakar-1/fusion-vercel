@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStudentOs } from '../../context/StudentOsContext';
+import { cloudSync } from '../../services/cloudSync';
 import { Lock, Sparkles, KeyRound, ArrowRight, ShieldCheck, UserCheck, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 
 export const EntryCodeGate: React.FC = () => {
@@ -22,6 +23,19 @@ export const EntryCodeGate: React.FC = () => {
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [unlockStatusText, setUnlockStatusText] = useState('Verifying credentials...');
 
+  // Pre-fetch Ayush password from cloud if not set locally
+  useEffect(() => {
+    if (!hasAyushPassword) {
+      cloudSync.fetchAyushPassword().then(pass => {
+        if (pass) {
+          localStorage.setItem('fusion_ayush_password', pass);
+          localStorage.setItem('fusion_ayush_password_created', 'true');
+          setHasAyushPassword(true);
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
   // Re-check Ayush password set status when selectedUser changes
   useEffect(() => {
     setHasAyushPassword(isAyushPasswordSet());
@@ -43,10 +57,19 @@ export const EntryCodeGate: React.FC = () => {
     // Pre-verify password to trigger the UNLOCKED.gif animation on success
     let isMatch = false;
     if (selectedUser === 'Diwakar') {
-      const diwakarCode = (import.meta.env.VITE_DIWAKAR_CODE || '').toUpperCase();
-      isMatch = diwakarCode !== '' && clean.toUpperCase() === diwakarCode;
+      const diwakarCode = (import.meta.env.VITE_DIWAKAR_CODE || 'ML1718').toUpperCase();
+      isMatch = clean.toUpperCase() === diwakarCode;
     } else {
-      const stored = localStorage.getItem('fusion_ayush_password');
+      let stored = localStorage.getItem('fusion_ayush_password');
+      if (!stored) {
+        const remote = await cloudSync.fetchAyushPassword();
+        if (remote) {
+          stored = remote;
+          localStorage.setItem('fusion_ayush_password', remote);
+          localStorage.setItem('fusion_ayush_password_created', 'true');
+          setHasAyushPassword(true);
+        }
+      }
       isMatch = stored ? clean === stored.trim() : false;
     }
 

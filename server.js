@@ -224,6 +224,59 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Real-Time Cloud & Local State Sync Endpoint
+  if (pathname === '/api/sync') {
+    const userParam = (url.searchParams.get('user') || 'diwakar').toLowerCase();
+    const targetKey = userParam.includes('ayush') ? 'ayush' : 'diwakar';
+    const partnerKey = targetKey === 'diwakar' ? 'ayush' : 'diwakar';
+
+    if (req.method === 'POST') {
+      const body = await readBody();
+      const { user, payload, timestamp } = body || {};
+      const key = (user || targetKey).toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+      const now = timestamp || Date.now();
+
+      if (payload) {
+        if (!db.syncStore) db.syncStore = {};
+        db.syncStore[key] = {
+          ...payload,
+          user: key,
+          lastUpdated: now
+        };
+        saveDb(db);
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, user: key, lastUpdated: now }));
+      return;
+    }
+
+    if (req.method === 'GET') {
+      const since = parseInt(url.searchParams.get('since') || '0', 10);
+      if (!db.syncStore) db.syncStore = {};
+      const userData = db.syncStore[targetKey] || null;
+      const partnerData = db.syncStore[partnerKey] || null;
+
+      const userLastUpdated = userData?.lastUpdated || Date.now();
+      const partnerLastUpdated = partnerData?.lastUpdated || Date.now();
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        user: targetKey,
+        lastUpdated: userLastUpdated,
+        data: userData,
+        hasNewData: userLastUpdated > since,
+        partner: {
+          user: partnerKey,
+          lastUpdated: partnerLastUpdated,
+          data: partnerData
+        }
+      }));
+      return;
+    }
+  }
+
   // 1. Auth: Verify Entry Code
   if (pathname === '/api/v1/auth/verify-code' && req.method === 'POST') {
     const { user, code } = await readBody();

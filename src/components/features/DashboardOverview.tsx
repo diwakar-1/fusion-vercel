@@ -60,8 +60,6 @@ export const DashboardOverview: React.FC = () => {
     streakGranted: boolean;
   } | null>(null);
 
-  const [showStreakPanel, setShowStreakPanel] = useState<boolean>(false);
-
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
@@ -309,33 +307,9 @@ export const DashboardOverview: React.FC = () => {
         </button>
       </div>
 
-      {/* 2. Four Core Stat Cards: Studied, Problems Solved, Hours Left + Streak toggle */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -16 }}>
-        <button
-          onClick={() => setShowStreakPanel(v => !v)}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '5px 14px',
-            borderRadius: 20,
-            border: '1.5px solid rgba(234, 88, 12, 0.3)',
-            background: showStreakPanel ? 'rgba(234, 88, 12, 0.1)' : 'rgba(255,255,255,0.85)',
-            color: '#EA580C',
-            fontSize: '0.78rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          <img src="/icons/STREAK DASHBOARD.gif" alt="Streak" style={{ width: 16, height: 16, objectFit: 'contain' }} />
-          <span>{streakCount}d Streak {showStreakPanel ? '▲ Hide' : '▼ Show'}</span>
-        </button>
-      </div>
-
+      {/* 2. Four Core Stat Cards: Streak, Studied, Problems Solved, Hours Left */}
       <div className="responsive-grid-stats">
-        {/* Metric 1: Verified Streak — collapsible */}
-        {showStreakPanel && (
+        {/* Metric 1: Verified Streak */}
         <GlassCard style={{ padding: '22px 24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
@@ -363,7 +337,6 @@ export const DashboardOverview: React.FC = () => {
             {isStreakProtectedToday ? '🔥 Protected for today' : '⚡ Complete daily challenge to increase streak'}
           </span>
         </GlassCard>
-        )}
 
         {/* Metric 2: Today Studied */}
         <GlassCard style={{ padding: '22px 24px' }}>
