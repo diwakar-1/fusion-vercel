@@ -1,22 +1,66 @@
 /**
  * FUSION Universal Cloud State Sync Engine
- * Real-time bidirectional data synchronizer for Web & Android App.
- * Handles Diwakar & Ayush live sessions, tasks, streaks, notes & problem statuses.
+ * Real-time bidirectional persistent data synchronizer for Web & Android App.
+ * Persists Diwakar & Ayush live sessions, tasks, streaks, notes, playlists & API keys across devices.
  */
 
-// In-memory memory store for active serverless instance
-let globalSyncStore = {
-  diwakar: {
-    lastUpdated: Date.now(),
-    version: 1,
-    data: null
-  },
-  ayush: {
-    lastUpdated: Date.now(),
-    version: 1,
-    data: null
-  }
+const CLOUD_DOC_IDS = {
+  diwakar: 'ff808181a09d98f701a0a8863c7e16cc',
+  ayush: 'ff808181a09d98f701a0a8863d2016cd'
 };
+
+// Memory cache to avoid excessive external fetch if fresh
+let memoryCache = {
+  diwakar: { lastUpdated: 0, data: null },
+  ayush: { lastUpdated: 0, data: null }
+};
+
+async function fetchCloudDoc(user) {
+  const docId = CLOUD_DOC_IDS[user];
+  if (!docId) return null;
+  try {
+    const res = await fetch(`https://api.restful-api.dev/objects/${docId}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return json?.data || null;
+    }
+  } catch (err) {
+    console.error(`Error fetching cloud doc for ${user}:`, err);
+  }
+  return memoryCache[user]?.data || null;
+}
+
+async function updateCloudDoc(user, payload, timestamp) {
+  const docId = CLOUD_DOC_IDS[user];
+  if (!docId) return false;
+  try {
+    const dataToSave = {
+      ...payload,
+      user,
+      lastUpdated: timestamp || Date.now()
+    };
+
+    memoryCache[user] = {
+      lastUpdated: dataToSave.lastUpdated,
+      data: dataToSave
+    };
+
+    const res = await fetch(`https://api.restful-api.dev/objects/${docId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: `fusion_cloud_store_${user}`,
+        data: dataToSave
+      })
+    });
+    return res.ok;
+  } catch (err) {
+    console.error(`Error updating cloud doc for ${user}:`, err);
+    return false;
+  }
+}
 
 export default async function handler(req, res) {
   // Universal CORS for Web, Android Capacitor & Localhost
@@ -36,6 +80,7 @@ export default async function handler(req, res) {
   const { searchParams } = new URL(req.url, `https://${req.headers.host || 'fusion-vercel.vercel.app'}`);
   const userParam = (searchParams.get('user') || req.body?.user || 'diwakar').toLowerCase();
   const targetKey = userParam.includes('ayush') ? 'ayush' : 'diwakar';
+  const partnerKey = targetKey === 'diwakar' ? 'ayush' : 'diwakar';
 
   if (req.method === 'POST') {
     try {
@@ -43,20 +88,16 @@ export default async function handler(req, res) {
       const { user, payload, timestamp } = body || {};
 
       const key = (user || targetKey).toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+      const now = timestamp || Date.now();
 
       if (payload) {
-        globalSyncStore[key] = {
-          lastUpdated: timestamp || Date.now(),
-          version: (globalSyncStore[key]?.version || 0) + 1,
-          data: payload
-        };
+        await updateCloudDoc(key, payload, now);
       }
 
       return res.status(200).json({
         success: true,
         user: key,
-        version: globalSyncStore[key].version,
-        lastUpdated: globalSyncStore[key].lastUpdated
+        lastUpdated: now
       });
     } catch (err) {
       return res.status(400).json({ success: false, error: err.message });
@@ -65,24 +106,26 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const since = parseInt(searchParams.get('since') || '0', 10);
-    const store = globalSyncStore[targetKey];
 
-    // Return the partner's status as well for real-time duo room
-    const partnerKey = targetKey === 'diwakar' ? 'ayush' : 'diwakar';
-    const partnerStore = globalSyncStore[partnerKey];
+    // Fetch user and partner state from durable cloud database
+    const [userData, partnerData] = await Promise.all([
+      fetchCloudDoc(targetKey),
+      fetchCloudDoc(partnerKey)
+    ]);
+
+    const userLastUpdated = userData?.lastUpdated || memoryCache[targetKey]?.lastUpdated || Date.now();
+    const partnerLastUpdated = partnerData?.lastUpdated || memoryCache[partnerKey]?.lastUpdated || Date.now();
 
     return res.status(200).json({
       success: true,
       user: targetKey,
-      lastUpdated: store?.lastUpdated || Date.now(),
-      version: store?.version || 1,
-      data: store?.data || null,
-      hasNewData: (store?.lastUpdated || 0) > since,
+      lastUpdated: userLastUpdated,
+      data: userData || null,
+      hasNewData: userLastUpdated > since,
       partner: {
         user: partnerKey,
-        lastUpdated: partnerStore?.lastUpdated || Date.now(),
-        version: partnerStore?.version || 1,
-        data: partnerStore?.data || null
+        lastUpdated: partnerLastUpdated,
+        data: partnerData || null
       }
     });
   }

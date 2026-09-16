@@ -5,6 +5,11 @@
 
 import { Capacitor } from '@capacitor/core';
 
+const CLOUD_DOC_IDS: Record<string, string> = {
+  diwakar: 'ff808181a09d98f701a0a8863c7e16cc',
+  ayush: 'ff808181a09d98f701a0a8863d2016cd'
+};
+
 // Cloud sync endpoint
 const getSyncEndpoint = (): string => {
   if (Capacitor.isNativePlatform()) {
@@ -54,28 +59,61 @@ class CloudSyncService {
 
     return new Promise((resolve) => {
       this.pushDebounceTimer = setTimeout(async () => {
+        const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+        const now = Date.now();
+        const payloadToPush = {
+          ...this.pendingPush,
+          updatedAt: now
+        };
+
         try {
+          // 1. Try Vercel API endpoint
           const endpoint = getSyncEndpoint();
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              user,
-              payload: this.pendingPush,
-              timestamp: Date.now()
+              user: currentUserKey,
+              payload: payloadToPush,
+              timestamp: now
             })
           });
 
           if (response.ok) {
-            this.lastSyncTimestamp = Date.now();
+            this.lastSyncTimestamp = now;
             resolve(true);
-          } else {
-            resolve(false);
+            return;
           }
         } catch {
-          resolve(false);
+          // Fallback to direct cloud document if serverless is unreachable
         }
-      }, 300); // 300ms debounce for high performance
+
+        try {
+          // 2. Direct Cloud Document Fallback
+          const docId = CLOUD_DOC_IDS[currentUserKey];
+          if (docId) {
+            const fallbackRes = await fetch(`https://api.restful-api.dev/objects/${docId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: `fusion_cloud_store_${currentUserKey}`,
+                data: {
+                  ...payloadToPush,
+                  user: currentUserKey,
+                  lastUpdated: now
+                }
+              })
+            });
+            if (fallbackRes.ok) {
+              this.lastSyncTimestamp = now;
+              resolve(true);
+              return;
+            }
+          }
+        } catch {}
+
+        resolve(false);
+      }, 250); // Fast 250ms debounce for near-instant responsiveness
     });
   }
 
@@ -89,24 +127,55 @@ class CloudSyncService {
     if (this.isSyncing) return;
     this.isSyncing = true;
 
+    const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    const partnerUserKey = currentUserKey === 'diwakar' ? 'ayush' : 'diwakar';
+
     try {
-      const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(user)}&since=${this.lastSyncTimestamp}`;
+      // 1. Try primary sync endpoint
+      const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(currentUserKey)}&since=${this.lastSyncTimestamp}`;
       const response = await fetch(endpoint, {
         headers: { 'Accept': 'application/json' }
       });
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.data && result.lastUpdated > this.lastSyncTimestamp) {
-          this.lastSyncTimestamp = result.lastUpdated;
+        if (result.success && result.data && (result.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
+          this.lastSyncTimestamp = result.lastUpdated || Date.now();
           onRemoteUpdate(result.data, result.partner?.data);
         } else if (result.success && result.partner?.data) {
           onRemoteUpdate(null as any, result.partner.data);
         }
+        return;
       }
-    } catch {} finally {
+    } catch {
+      // Fallback to direct cloud store
+    } finally {
       this.isSyncing = false;
     }
+
+    // Direct fallback if API was unreachable
+    try {
+      const docId = CLOUD_DOC_IDS[currentUserKey];
+      const partnerDocId = CLOUD_DOC_IDS[partnerUserKey];
+
+      const [userRes, partnerRes] = await Promise.all([
+        docId ? fetch(`https://api.restful-api.dev/objects/${docId}`) : Promise.resolve(null),
+        partnerDocId ? fetch(`https://api.restful-api.dev/objects/${partnerDocId}`) : Promise.resolve(null)
+      ]);
+
+      const userJson = userRes && userRes.ok ? await userRes.json() : null;
+      const partnerJson = partnerRes && partnerRes.ok ? await partnerRes.json() : null;
+
+      const userData = userJson?.data;
+      const partnerData = partnerJson?.data;
+
+      if (userData && (userData.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
+        this.lastSyncTimestamp = userData.lastUpdated || Date.now();
+        onRemoteUpdate(userData, partnerData);
+      } else if (partnerData) {
+        onRemoteUpdate(null as any, partnerData);
+      }
+    } catch {}
   }
 
   /**
@@ -118,6 +187,12 @@ class CloudSyncService {
   ): () => void {
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
+    }
+
+    // Initial pull immediately on startup
+    const initialUser = getUser();
+    if (initialUser) {
+      this.pullState(initialUser, onRemoteUpdate);
     }
 
     // Run every 1000ms (1 second) for real-time responsiveness

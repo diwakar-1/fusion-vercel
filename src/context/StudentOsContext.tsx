@@ -716,20 +716,28 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
           if (Array.isArray(remoteData.dailyTasks) && remoteData.dailyTasks.length > 0) {
             setDailyTasks(remoteData.dailyTasks);
+            try { localStorage.setItem('fusion_daily_tasks', JSON.stringify(remoteData.dailyTasks)); } catch {}
           }
           if (Array.isArray(remoteData.notes)) {
             setNotes(remoteData.notes);
+            try { localStorage.setItem('fusion_notes', JSON.stringify(remoteData.notes)); } catch {}
           }
           if (remoteData.timetableSchedule) {
             setTimetableSchedule(remoteData.timetableSchedule);
+            try { localStorage.setItem('fusion_timetable_schedule', JSON.stringify(remoteData.timetableSchedule)); } catch {}
           }
           if (Array.isArray(remoteData.dsaTopics) && remoteData.dsaTopics.length > 0) {
             setDsaProblems(remoteData.dsaTopics);
+            try { localStorage.setItem('fusion_dsa_problems', JSON.stringify(remoteData.dsaTopics)); } catch {}
+          }
+          if (Array.isArray(remoteData.studyLogs) && remoteData.studyLogs.length > 0) {
+            setStudySessions(remoteData.studyLogs);
+            try { localStorage.setItem('fusion_study_sessions', JSON.stringify(remoteData.studyLogs)); } catch {}
           }
           // Sync playlists/courses from Android to Web
           if (Array.isArray(remoteData.courses) && remoteData.courses.length > 0) {
             setCourses(remoteData.courses);
-            localStorage.setItem('fusion_courses', JSON.stringify(remoteData.courses));
+            try { localStorage.setItem('fusion_courses', JSON.stringify(remoteData.courses)); } catch {}
           }
           // Sync API keys from Android to Web
           if (remoteData.geminiApiKey) {
