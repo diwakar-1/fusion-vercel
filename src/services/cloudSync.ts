@@ -26,6 +26,9 @@ export interface SyncPayload {
   dsaTopics: any[];
   notes: any[];
   timetableSchedule: any;
+  courses?: any[];          // Playlists synced between Android & Web
+  geminiApiKey?: string;    // API keys synced so Android keys appear on Web
+  youtubeApiKey?: string;
   activeTimerState?: any;
   studyLogs?: any[];
   completedProblemIds?: string[];

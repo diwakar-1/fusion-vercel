@@ -212,40 +212,18 @@ const DEFAULT_STUDY_SESSIONS: StudySession[] = [];
 
 const DEFAULT_DSA_SESSIONS: DsaSession[] = [];
 
-const DEFAULT_PDF_SHEETS: PdfQuestionSheet[] = [
-  {
-    id: 'sheet_unified_master',
-    title: 'Master DSA & Coding Checklist (Verified Solutions)',
-    subject: 'DSA & Coding',
-    totalCount: 10,
-    completedCount: 4,
-    questions: [
-      { id: 'q1', title: 'Two Sum', platform: 'LeetCode', completed: true, completedBy: 'Diwakar' },
-      { id: 'q2', title: 'Best Time to Buy and Sell Stock', platform: 'LeetCode', completed: true, completedBy: 'Diwakar' },
-      { id: 'q3', title: 'Contains Duplicate', platform: 'LeetCode', completed: true, completedBy: 'Ayush' },
-      { id: 'q4', title: 'Product of Array Except Self', platform: 'LeetCode', completed: true, completedBy: 'Ayush' },
-      { id: 'q5', title: 'Maximum Subarray (Kadane\'s)', platform: 'LeetCode', completed: false },
-      { id: 'q6', title: '3Sum', platform: 'LeetCode', completed: false },
-      { id: 'q7', title: 'Container With Most Water', platform: 'LeetCode', completed: false },
-      { id: 'q8', title: 'Trapping Rain Water', platform: 'LeetCode', completed: false },
-      { id: 'q9', title: 'Reverse Linked List', platform: 'LeetCode', completed: false },
-      { id: 'q10', title: 'Merge Two Sorted Lists', platform: 'LeetCode', completed: false }
-    ]
-  }
-];
+// Fresh start: Empty sheet — users add their own questions
+const DEFAULT_PDF_SHEETS: PdfQuestionSheet[] = [];
 
 const DEFAULT_DAILY_TASKS: DailyTask[] = [
-  { id: 'dt_1', title: 'Solve 2 Medium problems on LeetCode / Codeforces', platform: 'LeetCode', exp: 100, completed: true, isCoreStreakTask: true, completedBy: 'Diwakar' },
-  { id: 'dt_2', title: 'Complete 2 Hours DSA Deep Focus Session', platform: 'Focus Timer', exp: 100, completed: true, isCoreStreakTask: true, completedBy: 'Diwakar' },
+  { id: 'dt_1', title: 'Solve 2 Medium problems on LeetCode / Codeforces', platform: 'LeetCode', exp: 100, completed: false, isCoreStreakTask: true },
+  { id: 'dt_2', title: 'Complete 2 Hours DSA Deep Focus Session', platform: 'Focus Timer', exp: 100, completed: false, isCoreStreakTask: true },
   { id: 'dt_3', title: 'Watch 1 Module from AIML YouTube Playlist (2 Hours)', platform: 'AIML Hub', exp: 100, completed: false, isCoreStreakTask: true },
   { id: 'dt_4', title: 'Solve 1 Kata on CodeWars or HackerRank challenge', platform: 'CodeWars', exp: 60, completed: false, isCoreStreakTask: false }
 ];
 
-const DEFAULT_DSA_PROBLEMS: DsaProblem[] = [
-  { id: 'd1', title: 'Two Sum & 3Sum Extensions', difficulty: 'Easy', topic: 'Arrays', platform: 'LeetCode', status: 'Solved', lastPracticed: '2026-09-10', nextRevisionDays: 7 },
-  { id: 'd2', title: 'Trapping Rain Water', difficulty: 'Hard', topic: 'Two Pointers', platform: 'LeetCode', status: 'Due for Revision', lastPracticed: '2026-09-02', nextRevisionDays: 0 },
-  { id: 'd3', title: 'Course Schedule (Topological Sort)', difficulty: 'Medium', topic: 'Graphs', platform: 'LeetCode', status: 'Solved', lastPracticed: '2026-09-12', nextRevisionDays: 5 }
-];
+// Fresh start: No pre-seeded DSA problems
+const DEFAULT_DSA_PROBLEMS: DsaProblem[] = [];
 
 const DEFAULT_ML_MILESTONES: MlMilestone[] = [
   {
@@ -284,6 +262,16 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [activeModule, setActiveModule] = useState<string>('dashboard');
   const [isAiChatOpen, setIsAiChatOpen] = useState<boolean>(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
+  // Storage version gate — bump version to wipe stale cached data
+  const STORAGE_VERSION = 'fusion_v3';
+  if (typeof window !== 'undefined' && localStorage.getItem('fusion_storage_version') !== STORAGE_VERSION) {
+    // Clear stale DSA problems, pdf sheets, and task completion states for fresh start
+    localStorage.removeItem('fusion_dsa_problems');
+    localStorage.removeItem('fusion_pdf_sheets');
+    localStorage.removeItem('fusion_daily_tasks');
+    localStorage.setItem('fusion_storage_version', STORAGE_VERSION);
+  }
 
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -727,6 +715,20 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (Array.isArray(remoteData.dsaTopics) && remoteData.dsaTopics.length > 0) {
             setDsaProblems(remoteData.dsaTopics);
           }
+          // Sync playlists/courses from Android to Web
+          if (Array.isArray(remoteData.courses) && remoteData.courses.length > 0) {
+            setCourses(remoteData.courses);
+            localStorage.setItem('fusion_courses', JSON.stringify(remoteData.courses));
+          }
+          // Sync API keys from Android to Web
+          if (remoteData.geminiApiKey) {
+            setGeminiApiKeyState(remoteData.geminiApiKey);
+            GeminiService.setApiKey(currentUser, remoteData.geminiApiKey);
+          }
+          if (remoteData.youtubeApiKey) {
+            setYoutubeApiKeyState(remoteData.youtubeApiKey);
+            YouTubeService.setApiKey(currentUser, remoteData.youtubeApiKey);
+          }
         }
 
         if (partnerData && partnerData.profile) {
@@ -743,7 +745,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => stopSync();
   }, [isAuthenticated, currentUser]);
 
-  // Push local updates to Cloud Sync API on state mutation
+  // Push local updates to Cloud Sync API on state mutation (includes courses & API keys)
   useEffect(() => {
     if (!isAuthenticated) return;
     cloudSync.pushState(currentUser, {
@@ -752,10 +754,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       dsaTopics: dsaProblems,
       notes,
       timetableSchedule,
+      courses,
+      geminiApiKey: geminiApiKey || undefined,
+      youtubeApiKey: youtubeApiKey || undefined,
       studyLogs: studySessions,
       updatedAt: Date.now()
     });
-  }, [isAuthenticated, currentUser, profile.totalXp, profile.streakDays, dailyTasks, dsaProblems, notes, timetableSchedule, studySessions]);
+  }, [isAuthenticated, currentUser, profile.totalXp, profile.streakDays, dailyTasks, dsaProblems, notes, timetableSchedule, studySessions, courses, geminiApiKey, youtubeApiKey]);
 
   // Ayush Permanent Password Management
   const isAyushPasswordSet = (): boolean => {
