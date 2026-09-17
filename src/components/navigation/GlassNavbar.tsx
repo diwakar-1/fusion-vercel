@@ -48,11 +48,6 @@ export const GlassNavbar: React.FC = () => {
           >
             FUSION
           </h1>
-          {/* Subtle Live Real-Time DB Pulse Dot on mobile */}
-          <span
-            className="sync-dot-mobile-only"
-            title="Real-Time Cloud Sync Connected"
-          />
         </div>
       </div>
 
@@ -68,11 +63,7 @@ export const GlassNavbar: React.FC = () => {
           flexShrink: 0
         }}
       >
-        {/* Live Cloud Sync Indicator (Desktop Only) */}
-        <div className="sync-badge-pulse nav-badge-hide-mobile" title="Cloud Sync Active: 1-second real-time sync with Android & Web">
-          <span className="sync-dot" />
-          <span>Sync</span>
-        </div>
+        {/* Streak Badge */}
 
         {/* Streak Badge */}
         <div

@@ -1006,8 +1006,19 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             try { localStorage.setItem('fusion_dsa_problems', JSON.stringify(remoteData.dsaTopics)); } catch {}
           }
           if (Array.isArray(remoteData.studyLogs) && remoteData.studyLogs.length > 0) {
-            setStudySessions(remoteData.studyLogs);
-            try { localStorage.setItem('fusion_study_sessions', JSON.stringify(remoteData.studyLogs)); } catch {}
+            setStudySessions(prev => {
+              const merged = [...prev];
+              remoteData.studyLogs!.forEach((rs: any) => {
+                const idx = merged.findIndex(s => s.id === rs.id);
+                if (idx >= 0) {
+                  merged[idx] = { ...merged[idx], ...rs };
+                } else {
+                  merged.unshift(rs);
+                }
+              });
+              try { localStorage.setItem('fusion_study_sessions', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
           }
           // Shared YouTube Playlist Engine: "they both different upload they can only see YT playlist"
           const allPartnerCourses = Array.isArray(partnerData?.courses) ? partnerData.courses : [];
@@ -1311,7 +1322,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         notes: `Completed ${minutesSpent}m deep focus block on ${timerSubject}.`
       };
 
-      setStudySessions(prev => [newSession, ...prev]);
+      setStudySessions(prev => {
+        const next = [newSession, ...prev];
+        try { localStorage.setItem('fusion_study_sessions', JSON.stringify(next)); } catch {}
+        cloudSync.pushState(currentUser, { studyLogs: next });
+        return next;
+      });
       api.createStudySession(newSession);
 
       currentFocusSessionSeconds.current = 0;
@@ -1361,7 +1377,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         timestamp: new Date().toISOString(),
         notes: `Focus block on ${timerSubject} (${minutesEarned}m).`
       };
-      setStudySessions(prev => [newSession, ...prev]);
+      setStudySessions(prev => {
+        const next = [newSession, ...prev];
+        try { localStorage.setItem('fusion_study_sessions', JSON.stringify(next)); } catch {}
+        cloudSync.pushState(currentUser, { studyLogs: next });
+        return next;
+      });
       api.createStudySession(newSession);
       currentFocusSessionSeconds.current = 0;
     }
@@ -1391,7 +1412,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         timestamp: new Date().toISOString(),
         notes: `Focus block on ${timerSubject} (${minutesEarned}m).`
       };
-      setStudySessions(prev => [newSession, ...prev]);
+      setStudySessions(prev => {
+        const next = [newSession, ...prev];
+        try { localStorage.setItem('fusion_study_sessions', JSON.stringify(next)); } catch {}
+        cloudSync.pushState(currentUser, { studyLogs: next });
+        return next;
+      });
       api.createStudySession(newSession);
     }
     currentFocusSessionSeconds.current = 0;
@@ -1408,7 +1434,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       id: 's_' + Date.now(),
       timestamp: new Date().toISOString()
     };
-    setStudySessions(prev => [newSession, ...prev]);
+    setStudySessions(prev => {
+      const next = [newSession, ...prev];
+      try { localStorage.setItem('fusion_study_sessions', JSON.stringify(next)); } catch {}
+      cloudSync.pushState(currentUser, { studyLogs: next });
+      return next;
+    });
     setProfile(p => {
       const nextMins = p.todayStudiedMinutes + session.duration_minutes;
       const nextXp = p.totalXp + session.duration_minutes * 2;
@@ -1418,6 +1449,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         localStorage.setItem(`fusion_studied_minutes_${currentUser.toLowerCase()}`, String(nextMins));
         localStorage.setItem(`fusion_studied_date_${currentUser.toLowerCase()}`, new Date().toISOString().split('T')[0]);
       } catch {}
+      cloudSync.pushState(currentUser, { profile: updated });
       return updated;
     });
     api.createStudySession(newSession);
@@ -1945,6 +1977,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         localStorage.setItem('fusion_daily_tasks', JSON.stringify(updated));
       } catch {}
+      cloudSync.pushState(currentUser, { dailyTasks: updated });
       return updated;
     });
 
@@ -1972,6 +2005,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         localStorage.setItem('fusion_daily_tasks', JSON.stringify(updated));
       } catch {}
+      cloudSync.pushState(currentUser, { dailyTasks: updated });
       return updated;
     });
 
@@ -1988,8 +2022,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Habits
   const toggleHabit = (habitId: string) => {
-    setHabits(prev =>
-      prev.map(h => {
+    setHabits(prev => {
+      const updated = prev.map(h => {
         if (h.id === habitId) {
           const done = !h.completedToday;
           const streak = done ? h.streak + 1 : Math.max(0, h.streak - 1);
@@ -1997,11 +2031,18 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             confetti({ particleCount: 40, spread: 50 });
             setProfile(p => ({ ...p, totalXp: p.totalXp + 25 }));
           }
-          return { ...h, completedToday: done, streak };
+          const history = [...(h.weeklyHistory || [false, false, false, false, false, false, false])];
+          history[6] = done;
+          return { ...h, completedToday: done, streak, weeklyHistory: history };
         }
         return h;
-      })
-    );
+      });
+      try {
+        localStorage.setItem('fusion_habits', JSON.stringify(updated));
+      } catch {}
+      cloudSync.pushState(currentUser, { habits: updated });
+      return updated;
+    });
   };
 
   const updateGoalProgress = (goalId: string, progress: number) => {

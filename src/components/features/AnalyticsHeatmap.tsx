@@ -49,10 +49,13 @@ export const AnalyticsHeatmap: React.FC = () => {
   // Real-time telemetry computations
   const currentLower = (currentUser || 'diwakar').toLowerCase();
   const profileLower = (profile.name || '').toLowerCase();
+
   const userSessions = studySessions.filter(s => {
     if (!s) return false;
     const nameLower = (s.user_name || (s as any).userName || '').toLowerCase();
     const idLower = (s.user_id || (s as any).userId || '').toLowerCase();
+    // If no user specified on session, count as current user
+    if (!nameLower && !idLower) return true;
     return (
       nameLower === currentLower ||
       nameLower === profileLower ||
@@ -65,9 +68,34 @@ export const AnalyticsHeatmap: React.FC = () => {
   const todayLocalStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const todayIsoStr = now.toISOString().split('T')[0];
 
+  // Robust session timestamp matcher across timezones (local date, UTC ISO date, or numeric epoch)
+  const isSessionOnDate = (s: any, targetD: Date, dateStr: string, isoStr: string) => {
+    if (!s || !s.timestamp) return false;
+    if (typeof s.timestamp === 'string') {
+      if (s.timestamp.startsWith(dateStr) || s.timestamp.startsWith(isoStr)) return true;
+    }
+    try {
+      const sDate = new Date(s.timestamp);
+      if (!isNaN(sDate.getTime())) {
+        const matchLocal =
+          sDate.getFullYear() === targetD.getFullYear() &&
+          sDate.getMonth() === targetD.getMonth() &&
+          sDate.getDate() === targetD.getDate();
+        if (matchLocal) return true;
+
+        const matchUtc =
+          sDate.getUTCFullYear() === targetD.getFullYear() &&
+          sDate.getUTCMonth() === targetD.getMonth() &&
+          sDate.getUTCDate() === targetD.getDate();
+        if (matchUtc) return true;
+      }
+    } catch {}
+    return false;
+  };
+
   const sessionTotalMinutes = userSessions.reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
   const todaySessionMinutes = userSessions
-    .filter(s => s.timestamp && (s.timestamp.startsWith(todayLocalStr) || s.timestamp.startsWith(todayIsoStr)))
+    .filter(s => isSessionOnDate(s, now, todayLocalStr, todayIsoStr))
     .reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
   const unloggedTodayMinutes = Math.max(0, (profile.todayStudiedMinutes || 0) - todaySessionMinutes);
   const totalStudyMinutes = sessionTotalMinutes + unloggedTodayMinutes;
@@ -109,17 +137,53 @@ export const AnalyticsHeatmap: React.FC = () => {
     const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
 
     const dayMinutes = userSessions
-      .filter(s => s.timestamp && (s.timestamp.startsWith(dateStr) || s.timestamp.startsWith(isoStr)))
+      .filter(s => isSessionOnDate(s, d, dateStr, isoStr))
       .reduce((acc, s) => acc + (s.duration_minutes || (s as any).durationMinutes || 0), 0);
 
     const isToday = i === 6;
     const effectiveDayMinutes = isToday ? Math.max(dayMinutes, profile.todayStudiedMinutes || 0) : dayMinutes;
-    const heightPct = Math.min(100, Math.round((effectiveDayMinutes / dailyGoalMinutes) * 100));
-    return { date: dateStr, dayName, minutes: effectiveDayMinutes, heightPct: Math.max(8, heightPct) };
+    return { date: dateStr, dayName, minutes: effectiveDayMinutes, isToday };
   });
 
-  const completedHabits = habits.filter(h => h.streak > 0).length;
-  const habitCompletionRate = habits.length > 0 ? Math.round((completedHabits / habits.length) * 100) : 100;
+  const maxWeeklyMinutes = Math.max(
+    dailyGoalMinutes,
+    ...past7Days.map(d => d.minutes),
+    60
+  );
+
+  // Past 7 Days Habit Tracker Telemetry
+  const totalHabitCount = habits.length > 0 ? habits.length : (dailyTasks.length > 0 ? dailyTasks.length : 4);
+  const completedHabitsToday = habits.filter(h => h.completedToday).length;
+  const completedTasksToday = dailyTasks.filter(t => t.completed).length;
+  const effectiveCompletedToday = Math.max(completedHabitsToday, completedTasksToday > 0 ? Math.min(totalHabitCount, completedTasksToday) : 0);
+
+  const habitCompletionRate = totalHabitCount > 0 ? Math.round((effectiveCompletedToday / totalHabitCount) * 100) : 100;
+
+  const past7Habits = past7Days.map((d, i) => {
+    const isToday = i === 6;
+    let completedCount = 0;
+    if (isToday) {
+      completedCount = effectiveCompletedToday;
+      if (completedCount === 0 && (profile.todayStudiedMinutes > 0 || totalProblemsSolved > 0)) {
+        completedCount = 1;
+      }
+    } else {
+      completedCount = habits.filter(h => {
+        const inHistory = Boolean(h.weeklyHistory && h.weeklyHistory[i]);
+        const inStreak = (h.streak || 0) >= (6 - i);
+        return inHistory || inStreak;
+      }).length;
+    }
+    const rate = totalHabitCount > 0 ? Math.min(100, Math.round((completedCount / totalHabitCount) * 100)) : 0;
+    return {
+      dayName: d.dayName,
+      date: d.date,
+      isToday,
+      completedCount,
+      totalCount: totalHabitCount,
+      rate
+    };
+  });
 
   const dsaLevel = Math.max(1, Math.min(10, Math.floor(dsaMinutes / 60) + 1));
   const dsaProgress = Math.min(100, Math.round(((dsaMinutes % 60) / 60) * 100));
@@ -356,50 +420,82 @@ export const AnalyticsHeatmap: React.FC = () => {
               </span>
             </div>
 
-            {/* Vertical Bar Chart */}
+            {/* Vertical Bar Chart for Habits */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'flex-end',
                 justifyContent: 'space-between',
                 height: 160,
-                padding: '0 10px',
+                padding: '0 6px 10px',
                 borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
                 marginBottom: 16
               }}
             >
-              {past7Days.map((day, idx) => (
+              {past7Habits.map((hDay, idx) => (
                 <div
                   key={idx}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: 8,
+                    gap: 6,
                     height: '100%',
-                    justifyContent: 'flex-end'
+                    justifyContent: 'flex-end',
+                    flex: 1
                   }}
+                  title={`${hDay.dayName}: ${hDay.completedCount}/${hDay.totalCount} Habits Completed (${hDay.rate}%)`}
                 >
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                    {day.minutes > 0 ? `${Math.round(day.minutes / 60)}h` : '0'}
+                  {/* Completion rate above bar */}
+                  <span
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      color: hDay.rate > 0 ? (hDay.rate === 100 ? '#059669' : '#0284C7') : 'var(--text-muted)'
+                    }}
+                  >
+                    {hDay.rate > 0 ? `${hDay.rate}%` : '0%'}
                   </span>
 
-                  {/* Clean Gradient Bar */}
+                  {/* Clean Track Container with Vertical Bar */}
                   <div
-                    className="analytics-bar"
                     style={{
                       width: 28,
-                      height: `${day.heightPct}%`,
-                      minHeight: 12,
-                      borderRadius: '8px 8px 4px 4px',
-                      background: 'linear-gradient(180deg, #38BDF8 0%, #0284C7 100%)',
-                      boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)',
-                      transition: 'height 0.4s ease'
+                      height: 100,
+                      borderRadius: 8,
+                      background: hDay.isToday ? 'rgba(2, 132, 199, 0.09)' : 'rgba(0, 0, 0, 0.04)',
+                      border: hDay.isToday ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid rgba(0, 0, 0, 0.03)',
+                      display: 'flex',
+                      alignItems: 'flex-end',
+                      overflow: 'hidden',
+                      position: 'relative'
                     }}
-                  />
+                  >
+                    <div
+                      style={{
+                        width: '100%',
+                        height: `${Math.max(hDay.rate > 0 ? 12 : 6, hDay.rate)}%`,
+                        borderRadius: '6px 6px 0 0',
+                        background: hDay.rate === 100
+                          ? 'linear-gradient(180deg, #34D399 0%, #059669 100%)'
+                          : hDay.rate > 0
+                            ? 'linear-gradient(180deg, #38BDF8 0%, #0284C7 100%)'
+                            : 'rgba(0, 0, 0, 0.08)',
+                        boxShadow: hDay.rate > 0 ? '0 3px 8px rgba(2, 132, 199, 0.25)' : 'none',
+                        transition: 'height 0.4s ease'
+                      }}
+                    />
+                  </div>
 
-                  <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600 }}>
-                    {day.dayName}
+                  {/* Day Label */}
+                  <span
+                    style={{
+                      fontSize: '0.74rem',
+                      color: hDay.isToday ? '#0284C7' : '#475569',
+                      fontWeight: hDay.isToday ? 800 : 600
+                    }}
+                  >
+                    {hDay.dayName}
                   </span>
                 </div>
               ))}
@@ -641,28 +737,91 @@ export const AnalyticsHeatmap: React.FC = () => {
               style={{
                 display: 'flex',
                 alignItems: 'flex-end',
-                justifyContent: 'space-around',
-                height: 120,
-                padding: '0 8px',
+                justifyContent: 'space-between',
+                height: 140,
+                padding: '0 6px 10px',
                 borderBottom: '1px solid rgba(0, 0, 0, 0.08)'
               }}
             >
-              {past7Days.map((d, i) => (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%', justifyContent: 'flex-end' }}>
+              {past7Days.map((d, i) => {
+                const fillPct = d.minutes > 0
+                  ? Math.max(14, Math.min(100, Math.round((d.minutes / maxWeeklyMinutes) * 100)))
+                  : 0;
+
+                const displayVal = d.minutes >= 60
+                  ? `${(d.minutes / 60).toFixed(1)}h`
+                  : d.minutes > 0
+                    ? `${d.minutes}m`
+                    : '0h';
+
+                return (
                   <div
-                    className="analytics-bar"
+                    key={i}
                     style={{
-                      width: 24,
-                      height: `${d.heightPct}%`,
-                      minHeight: 14,
-                      borderRadius: '8px 8px 3px 3px',
-                      background: 'linear-gradient(180deg, #38BDF8 0%, #0284C7 100%)',
-                      boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 6,
+                      height: '100%',
+                      justifyContent: 'flex-end',
+                      flex: 1
                     }}
-                  />
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{d.dayName}</span>
-                </div>
-              ))}
+                    title={`${d.dayName}: ${displayVal} studied`}
+                  >
+                    {/* Hour/Minute Badge above bar */}
+                    <span
+                      style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        color: d.minutes > 0 ? '#0284C7' : 'var(--text-muted)'
+                      }}
+                    >
+                      {displayVal}
+                    </span>
+
+                    {/* Clean Track Container with Vertical Bar */}
+                    <div
+                      style={{
+                        width: 28,
+                        height: 85,
+                        borderRadius: 8,
+                        background: d.isToday ? 'rgba(2, 132, 199, 0.09)' : 'rgba(0, 0, 0, 0.04)',
+                        border: d.isToday ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid rgba(0, 0, 0, 0.03)',
+                        display: 'flex',
+                        alignItems: 'flex-end',
+                        overflow: 'hidden',
+                        position: 'relative'
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '100%',
+                          height: `${fillPct > 0 ? fillPct : 6}%`,
+                          borderRadius: '6px 6px 0 0',
+                          background: fillPct > 0
+                            ? (d.isToday
+                                ? 'linear-gradient(180deg, #38BDF8 0%, #0284C7 100%)'
+                                : 'linear-gradient(180deg, #60A5FA 0%, #2563EB 100%)')
+                            : 'rgba(0, 0, 0, 0.08)',
+                          boxShadow: fillPct > 0 ? '0 3px 8px rgba(2, 132, 199, 0.25)' : 'none',
+                          transition: 'height 0.4s ease'
+                        }}
+                      />
+                    </div>
+
+                    {/* Day label */}
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        color: d.isToday ? '#0284C7' : '#475569',
+                        fontWeight: d.isToday ? 800 : 600
+                      }}
+                    >
+                      {d.dayName}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

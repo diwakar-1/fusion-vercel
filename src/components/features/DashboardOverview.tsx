@@ -221,36 +221,6 @@ export const DashboardOverview: React.FC = () => {
               Hey {profile.name}!
             </h2>
 
-            {/* Real-time DB Status Badge */}
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 12px',
-                borderRadius: 16,
-                fontSize: '0.74rem',
-                fontWeight: 700,
-                background: (Capacitor.isNativePlatform() || isBackendConnected) ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-                color: (Capacitor.isNativePlatform() || isBackendConnected) ? '#059669' : '#D97706',
-                border: `1px solid ${(Capacitor.isNativePlatform() || isBackendConnected) ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`
-              }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: '50%',
-                  background: (Capacitor.isNativePlatform() || isBackendConnected) ? '#10B981' : '#F59E0B'
-                }}
-              />
-              {Capacitor.isNativePlatform()
-                ? 'Cloud Sync Active'
-                : isBackendConnected
-                  ? 'Live Real-Time DB Connected'
-                  : 'Connecting to Cloud...'}
-            </span>
-
             {/* Punishment / Strike Alert Pill */}
             {((profile.strikes ?? 0) > 0 || Boolean(profile.isPunished)) && (
               <span
