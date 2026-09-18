@@ -17,17 +17,32 @@ let memoryCache = {
 
 async function fetchCloudDoc(user) {
   const docId = CLOUD_DOC_IDS[user];
-  if (!docId) return null;
+  // 1. Try primary Render sync endpoint
   try {
-    const res = await fetch(`https://api.restful-api.dev/objects/${docId}`, {
-      headers: { 'Accept': 'application/json' }
+    const renderRes = await fetch(`https://fussion-api.onrender.com/api/v1/sync?user=${user}`, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(6000)
     });
-    if (res.ok) {
-      const json = await res.json();
-      return json?.data || null;
+    if (renderRes.ok) {
+      const json = await renderRes.json();
+      if (json?.data) return json.data;
     }
-  } catch (err) {
-    console.error(`Error fetching cloud doc for ${user}:`, err);
+  } catch {}
+
+  // 2. Direct cloud fallback
+  if (docId) {
+    try {
+      const res = await fetch(`https://api.restful-api.dev/objects/${docId}`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return json?.data || null;
+      }
+    } catch (err) {
+      console.error(`Error fetching cloud doc for ${user}:`, err);
+    }
   }
   return memoryCache[user]?.data || null;
 }
@@ -85,25 +100,21 @@ async function updateCloudDoc(user, payload, timestamp) {
       });
     }
 
-    // Merge courses by id - do not wipe existing courses if payload courses is empty
-    let mergedCourses = existing?.courses || [];
-    if (Array.isArray(payload.courses) && payload.courses.length > 0) {
-      mergedCourses = [...mergedCourses];
-      payload.courses.forEach(pc => {
-        const idx = mergedCourses.findIndex(ec => ec.id === pc.id);
-        if (idx >= 0) {
-          const existingLecs = mergedCourses[idx].lectures || [];
-          const payloadLecs = pc.lectures || [];
-          const mergedLecs = payloadLecs.length > 0 ? payloadLecs : existingLecs;
-          mergedCourses[idx] = { ...mergedCourses[idx], ...pc, lectures: mergedLecs };
-        } else {
-          mergedCourses.unshift(pc);
-        }
-      });
+    // Track deleted courses tombstone list across devices
+    const existingDeleted = Array.isArray(existing?.deletedCourseIds) ? existing.deletedCourseIds : [];
+    const payloadDeleted = Array.isArray(payload?.deletedCourseIds) ? payload.deletedCourseIds : [];
+    const allDeletedIds = new Set([...existingDeleted, ...payloadDeleted]);
+
+    // Handle courses: if payload.courses is explicitly provided, respect user deletions!
+    let mergedCourses = [];
+    if (Array.isArray(payload.courses)) {
+      mergedCourses = payload.courses.filter(c => !allDeletedIds.has(c.id));
+    } else {
+      mergedCourses = (existing?.courses || []).filter(c => !allDeletedIds.has(c.id));
     }
 
-    // Daily tasks
-    const mergedDailyTasks = (Array.isArray(payload.dailyTasks) && payload.dailyTasks.length > 0)
+    // Daily tasks: respect additions and removals
+    const mergedDailyTasks = Array.isArray(payload.dailyTasks)
       ? payload.dailyTasks
       : (existing?.dailyTasks || []);
 
@@ -129,6 +140,7 @@ async function updateCloudDoc(user, payload, timestamp) {
       profile: mergedProfile,
       notes: mergedNotes,
       courses: mergedCourses,
+      deletedCourseIds: Array.from(allDeletedIds),
       dailyTasks: mergedDailyTasks,
       studyLogs: mergedStudyLogs,
       partnerChatMessages: mergedChat,

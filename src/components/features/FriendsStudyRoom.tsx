@@ -25,7 +25,9 @@ import {
   Check,
   Award,
   Film,
-  ChevronRight
+  ChevronRight,
+  Trash2,
+  Dices
 } from 'lucide-react';
 import { triggerSparkleConfetti as confetti } from '../../utils/confettiHelper';
 
@@ -43,6 +45,7 @@ export const FriendsStudyRoom: React.FC = () => {
     dailyTasks,
     toggleDailyTask,
     addDailyTask,
+    deleteDailyTask,
     courses,
     setActivePlayingCourse
   } = useStudentOs();
@@ -52,6 +55,7 @@ export const FriendsStudyRoom: React.FC = () => {
   const [showAddCustomTaskModal, setShowAddCustomTaskModal] = useState<boolean>(false);
   const [customTaskTitle, setCustomTaskTitle] = useState('');
   const [customTaskPlatform, setCustomTaskPlatform] = useState('LeetCode');
+  const [customXpMode, setCustomXpMode] = useState<'custom' | 'random'>('random');
   const [customTaskExp, setCustomTaskExp] = useState(50);
   const [customIsCore, setCustomIsCore] = useState(false);
 
@@ -70,10 +74,14 @@ export const FriendsStudyRoom: React.FC = () => {
   const handleCreateCustomTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTaskTitle.trim()) return;
+    const finalXp = customXpMode === 'random'
+      ? Math.floor(Math.random() * 56) + 25 // 25 to 80 XP
+      : customTaskExp;
+
     addDailyTask({
       title: customTaskTitle.trim(),
       platform: customTaskPlatform.trim() || 'Custom Duo Quest',
-      exp: customTaskExp,
+      exp: finalXp,
       isCoreStreakTask: customIsCore,
       isCustom: true,
       createdBy: profile.name
@@ -684,6 +692,30 @@ export const FriendsStudyRoom: React.FC = () => {
                     Pending
                   </span>
                 )}
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Delete task "${task.title}"?`)) {
+                      deleteDailyTask(task.id);
+                    }
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#94A3B8',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'color 0.2s ease'
+                  }}
+                  title="Delete task"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
           ))}
@@ -1009,24 +1041,71 @@ export const FriendsStudyRoom: React.FC = () => {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
-                    XP Reward
+                    XP Reward Mode
                   </label>
-                  <select
-                    value={customTaskExp}
-                    onChange={e => setCustomTaskExp(Number(e.target.value))}
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(0,0,0,0.15)',
-                      fontSize: '0.92rem'
-                    }}
-                  >
-                    <option value={25}>+25 XP (Quick)</option>
-                    <option value={50}>+50 XP (Standard)</option>
-                    <option value={100}>+100 XP (High Impact)</option>
-                    <option value={150}>+150 XP (Major Milestone)</option>
-                  </select>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setCustomXpMode('random')}
+                      style={{
+                        padding: '10px 10px',
+                        borderRadius: '10px',
+                        border: customXpMode === 'random' ? '2px solid #EA580C' : '1px solid rgba(0,0,0,0.15)',
+                        background: customXpMode === 'random' ? 'rgba(234, 88, 12, 0.1)' : '#FFFFFF',
+                        color: customXpMode === 'random' ? '#EA580C' : 'var(--text-secondary)',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Dices size={14} />
+                      <span>🎲 Random (25-80)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomXpMode('custom')}
+                      style={{
+                        padding: '10px 10px',
+                        borderRadius: '10px',
+                        border: customXpMode === 'custom' ? '2px solid #4F46E5' : '1px solid rgba(0,0,0,0.15)',
+                        background: customXpMode === 'custom' ? 'rgba(79, 70, 229, 0.1)' : '#FFFFFF',
+                        color: customXpMode === 'custom' ? '#4F46E5' : 'var(--text-secondary)',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Award size={14} />
+                      <span>Specific XP</span>
+                    </button>
+                  </div>
+                  {customXpMode === 'custom' && (
+                    <select
+                      value={customTaskExp}
+                      onChange={e => setCustomTaskExp(Number(e.target.value))}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        border: '1px solid rgba(0,0,0,0.15)',
+                        fontSize: '0.88rem',
+                        marginTop: 8
+                      }}
+                    >
+                      <option value={25}>+25 XP (Quick Task)</option>
+                      <option value={50}>+50 XP (Standard Task)</option>
+                      <option value={75}>+75 XP (Focused Task)</option>
+                      <option value={100}>+100 XP (High Impact)</option>
+                    </select>
+                  )}
                 </div>
               </div>
 

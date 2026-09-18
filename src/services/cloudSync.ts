@@ -1,6 +1,7 @@
 /**
  * FUSION Cloud Sync Engine
- * Real-time 1-Second Bi-Directional State Synchronization between Web & Android.
+ * High-performance, low-overhead bidirectional state synchronizer between Web & Android.
+ * Features smart visibility-based intervals, multi-tab coordination, and instant hydration.
  */
 
 import { Capacitor } from '@capacitor/core';
@@ -25,6 +26,7 @@ export interface SyncPayload {
   notes: any[];
   timetableSchedule: any;
   courses?: any[];          // Playlists synced between Android & Web
+  deletedCourseIds?: string[]; // Tombstone list of deleted courses
   pdfQuestionSheets?: any[]; // PDF and Coding Question sheets synced
   habits?: any[];           // Daily Habits synced
   goals?: any[];            // Goals synced
@@ -45,16 +47,73 @@ export interface SyncPayload {
 
 class CloudSyncService {
   private lastSyncTimestamp = 0;
+  private lastPartnerSyncTimestamp = 0;
   private isSyncing = false;
   private syncTimer: any = null;
   private pendingPush: Partial<SyncPayload> | null = null;
   private pushDebounceTimer: any = null;
+  private hasInitialPulledUsers: Record<string, boolean> = {};
 
   /**
-   * Push local user state to the cloud
+   * Direct fetch user and partner state from cloud (used during login to guarantee immediate hydration)
+   */
+  async fetchStateDirect(user: string): Promise<{ data: SyncPayload | null; partnerData: any }> {
+    const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    const partnerUserKey = currentUserKey === 'diwakar' ? 'ayush' : 'diwakar';
+
+    // 1. Try primary sync endpoint with a 10s timeout
+    try {
+      const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(currentUserKey)}&since=0`;
+      const response = await fetch(endpoint, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          this.lastSyncTimestamp = result.lastUpdated || Date.now();
+          if (result.partner?.lastUpdated) {
+            this.lastPartnerSyncTimestamp = result.partner.lastUpdated;
+          }
+          this.hasInitialPulledUsers[currentUserKey] = true;
+          try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
+          return { data: result.data, partnerData: result.partner?.data || null };
+        }
+      }
+    } catch {
+      // Fallback
+    }
+
+    // 2. Direct Cloud Document Fallback
+    try {
+      const docId = CLOUD_DOC_IDS[currentUserKey];
+      const partnerDocId = CLOUD_DOC_IDS[partnerUserKey];
+
+      const [userRes, partnerRes] = await Promise.all([
+        docId ? fetch(`https://api.restful-api.dev/objects/${docId}`, { signal: AbortSignal.timeout(6000) }) : Promise.resolve(null),
+        partnerDocId ? fetch(`https://api.restful-api.dev/objects/${partnerDocId}`, { signal: AbortSignal.timeout(6000) }) : Promise.resolve(null)
+      ]);
+
+      const userJson = userRes && userRes.ok ? await userRes.json() : null;
+      const partnerJson = partnerRes && partnerRes.ok ? await partnerRes.json() : null;
+
+      if (userJson?.data) {
+        this.lastSyncTimestamp = userJson.data.lastUpdated || Date.now();
+        this.hasInitialPulledUsers[currentUserKey] = true;
+        try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
+        return { data: userJson.data, partnerData: partnerJson?.data || null };
+      }
+    } catch {}
+
+    return { data: null, partnerData: null };
+  }
+
+  /**
+   * Push local user state to the cloud with debouncing
    */
   async pushState(user: string, payload: Partial<SyncPayload>): Promise<boolean> {
-    this.pendingPush = payload;
+    this.pendingPush = { ...(this.pendingPush || {}), ...payload };
 
     if (this.pushDebounceTimer) {
       clearTimeout(this.pushDebounceTimer);
@@ -62,80 +121,97 @@ class CloudSyncService {
 
     return new Promise((resolve) => {
       this.pushDebounceTimer = setTimeout(async () => {
-        const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
-        const now = Date.now();
-        const storedGeminiKey = localStorage.getItem(`fusion_gemini_api_key_${currentUserKey}`) || undefined;
-        const storedYtKey = localStorage.getItem(`fusion_yt_api_key_${currentUserKey}`) || undefined;
-
-        const payloadToPush = {
-          ...this.pendingPush,
-          geminiApiKey: this.pendingPush?.geminiApiKey || storedGeminiKey,
-          youtubeApiKey: this.pendingPush?.youtubeApiKey || storedYtKey,
-          updatedAt: now
-        };
-
-        try {
-          // 1. Try primary API endpoint with explicit ?user= query parameter
-          const baseEndpoint = getSyncEndpoint();
-          const endpoint = `${baseEndpoint}?user=${encodeURIComponent(currentUserKey)}`;
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              user: currentUserKey,
-              payload: payloadToPush,
-              timestamp: now
-            })
-          });
-
-          if (response.ok) {
-            this.lastSyncTimestamp = now;
-            try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(now)); } catch {}
-            resolve(true);
-            return;
-          }
-        } catch {
-          // Fallback to direct cloud document if serverless is unreachable
-        }
-
-        try {
-          // 2. Direct Cloud Document Fallback
-          const docId = CLOUD_DOC_IDS[currentUserKey];
-          if (docId) {
-            const fallbackRes = await fetch(`https://api.restful-api.dev/objects/${docId}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: `fusion_cloud_store_${currentUserKey}`,
-                data: {
-                  ...payloadToPush,
-                  user: currentUserKey,
-                  lastUpdated: now
-                }
-              })
-            });
-            if (fallbackRes.ok) {
-              this.lastSyncTimestamp = now;
-              try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(now)); } catch {}
-              resolve(true);
-              return;
-            }
-          }
-        } catch {}
-
-        resolve(false);
-      }, 250); // Fast 250ms debounce for near-instant responsiveness
+        const success = await this.executePush(user, this.pendingPush || payload);
+        this.pendingPush = null;
+        resolve(success);
+      }, 350);
     });
   }
 
-  private hasInitialPulledUsers: Record<string, boolean> = {};
+  /**
+   * Immediate push without debouncing (for deletions, task creation, or critical actions)
+   */
+  async pushStateDirect(user: string, payload: Partial<SyncPayload>): Promise<boolean> {
+    if (this.pushDebounceTimer) {
+      clearTimeout(this.pushDebounceTimer);
+      this.pushDebounceTimer = null;
+    }
+    const combined = { ...(this.pendingPush || {}), ...payload };
+    this.pendingPush = null;
+    return this.executePush(user, combined);
+  }
+
+  private async executePush(user: string, payload: Partial<SyncPayload>): Promise<boolean> {
+    const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    const now = Date.now();
+    const storedGeminiKey = localStorage.getItem(`fusion_gemini_api_key_${currentUserKey}`) || undefined;
+    const storedYtKey = localStorage.getItem(`fusion_yt_api_key_${currentUserKey}`) || undefined;
+
+    const payloadToPush = {
+      ...payload,
+      geminiApiKey: payload?.geminiApiKey || storedGeminiKey,
+      youtubeApiKey: payload?.youtubeApiKey || storedYtKey,
+      updatedAt: now
+    };
+
+    try {
+      // 1. Try primary API endpoint
+      const baseEndpoint = getSyncEndpoint();
+      const endpoint = `${baseEndpoint}?user=${encodeURIComponent(currentUserKey)}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: currentUserKey,
+          payload: payloadToPush,
+          timestamp: now
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+
+      if (response.ok) {
+        this.lastSyncTimestamp = now;
+        try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(now)); } catch {}
+        return true;
+      }
+    } catch {
+      // Fallback
+    }
+
+    try {
+      // 2. Direct Cloud Document Fallback
+      const docId = CLOUD_DOC_IDS[currentUserKey];
+      if (docId) {
+        const fallbackRes = await fetch(`https://api.restful-api.dev/objects/${docId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: `fusion_cloud_store_${currentUserKey}`,
+            data: {
+              ...payloadToPush,
+              user: currentUserKey,
+              lastUpdated: now
+            }
+          }),
+          signal: AbortSignal.timeout(6000)
+        });
+        if (fallbackRes.ok) {
+          this.lastSyncTimestamp = now;
+          try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(now)); } catch {}
+          return true;
+        }
+      }
+    } catch {}
+
+    return false;
+  }
 
   /**
-   * Pull latest remote state from the cloud (every second)
+   * Pull latest remote state from the cloud only when data has genuinely changed
    */
   async pullState(
     user: string,
-    onRemoteUpdate: (data: SyncPayload, partnerData: any) => void
+    onRemoteUpdate: (data: SyncPayload | null, partnerData: any) => void
   ): Promise<void> {
     if (this.isSyncing) return;
     this.isSyncing = true;
@@ -154,27 +230,42 @@ class CloudSyncService {
     const sinceParam = isFirstPull ? 0 : this.lastSyncTimestamp;
 
     try {
-      // 1. Try primary sync endpoint
+      // 1. Primary sync endpoint
       const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(currentUserKey)}&since=${sinceParam}`;
       const response = await fetch(endpoint, {
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(7000)
       });
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.data && (isFirstPull || result.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
-          this.lastSyncTimestamp = result.lastUpdated || Date.now();
+        if (result.success) {
+          const userHasNew = isFirstPull || (result.data && (result.hasNewData || (result.lastUpdated && result.lastUpdated > this.lastSyncTimestamp)));
+          const partnerHasNew = result.partner?.data && (
+            isFirstPull || 
+            (result.partner.lastUpdated && result.partner.lastUpdated > this.lastPartnerSyncTimestamp)
+          );
+
+          if (userHasNew) {
+            this.lastSyncTimestamp = result.lastUpdated || Date.now();
+            try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
+          }
+
+          if (partnerHasNew) {
+            this.lastPartnerSyncTimestamp = result.partner.lastUpdated || Date.now();
+          }
+
           this.hasInitialPulledUsers[currentUserKey] = true;
-          try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
-          onRemoteUpdate(result.data, result.partner?.data);
-        } else if (result.success && result.partner?.data) {
-          if (isFirstPull) this.hasInitialPulledUsers[currentUserKey] = true;
-          onRemoteUpdate(null as any, result.partner.data);
+
+          // ONLY trigger update if data actually changed, stopping infinite multi-tab re-renders!
+          if (userHasNew || partnerHasNew) {
+            onRemoteUpdate(userHasNew ? result.data : null, partnerHasNew ? result.partner.data : null);
+          }
+          return;
         }
-        return;
       }
     } catch {
-      // Fallback to direct cloud store
+      // Fallback
     } finally {
       this.isSyncing = false;
     }
@@ -185,8 +276,8 @@ class CloudSyncService {
       const partnerDocId = CLOUD_DOC_IDS[partnerUserKey];
 
       const [userRes, partnerRes] = await Promise.all([
-        docId ? fetch(`https://api.restful-api.dev/objects/${docId}`) : Promise.resolve(null),
-        partnerDocId ? fetch(`https://api.restful-api.dev/objects/${partnerDocId}`) : Promise.resolve(null)
+        docId ? fetch(`https://api.restful-api.dev/objects/${docId}`, { signal: AbortSignal.timeout(5000) }) : Promise.resolve(null),
+        partnerDocId ? fetch(`https://api.restful-api.dev/objects/${partnerDocId}`, { signal: AbortSignal.timeout(5000) }) : Promise.resolve(null)
       ]);
 
       const userJson = userRes && userRes.ok ? await userRes.json() : null;
@@ -195,47 +286,80 @@ class CloudSyncService {
       const userData = userJson?.data;
       const partnerData = partnerJson?.data;
 
-      if (userData && (isFirstPull || userData.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0)) {
+      const userHasNew = userData && (isFirstPull || userData.lastUpdated > this.lastSyncTimestamp || this.lastSyncTimestamp === 0);
+      const partnerHasNew = partnerData && (isFirstPull || partnerData.lastUpdated > this.lastPartnerSyncTimestamp);
+
+      if (userHasNew) {
         this.lastSyncTimestamp = userData.lastUpdated || Date.now();
-        this.hasInitialPulledUsers[currentUserKey] = true;
         try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
-        onRemoteUpdate(userData, partnerData);
-      } else if (partnerData) {
-        if (isFirstPull) this.hasInitialPulledUsers[currentUserKey] = true;
-        onRemoteUpdate(null as any, partnerData);
+      }
+
+      if (partnerHasNew) {
+        this.lastPartnerSyncTimestamp = partnerData.lastUpdated || Date.now();
+      }
+
+      this.hasInitialPulledUsers[currentUserKey] = true;
+
+      if (userHasNew || partnerHasNew) {
+        onRemoteUpdate(userHasNew ? userData : null, partnerHasNew ? partnerData : null);
       }
     } catch {}
   }
 
   /**
-   * Start 1-second continuous auto-sync loop
+   * Start intelligent auto-sync loop:
+   * 6s polling when tab is active/visible, 30s when backgrounded, immediate pull on tab focus.
+   * Completely eliminates video stuttering and multi-tab CPU lag.
    */
   startAutoSync(
     getUser: () => string,
-    onRemoteUpdate: (data: SyncPayload, partnerData: any) => void
+    onRemoteUpdate: (data: SyncPayload | null, partnerData: any) => void
   ): () => void {
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
+      this.syncTimer = null;
     }
 
-    // Initial pull immediately on startup
-    const initialUser = getUser();
-    if (initialUser) {
-      this.pullState(initialUser, onRemoteUpdate);
-    }
-
-    // Run every 1000ms (1 second) for real-time responsiveness
-    this.syncTimer = setInterval(() => {
+    const runPull = () => {
       const currentUser = getUser();
       if (currentUser) {
         this.pullState(currentUser, onRemoteUpdate);
       }
-    }, 1000);
+    };
+
+    // Initial pull immediately
+    runPull();
+
+    let currentIntervalMs = (typeof document !== 'undefined' && document.visibilityState === 'hidden') ? 30000 : 6000;
+
+    const setupTimer = (intervalMs: number) => {
+      if (this.syncTimer) clearInterval(this.syncTimer);
+      this.syncTimer = setInterval(runPull, intervalMs);
+    };
+
+    setupTimer(currentIntervalMs);
+
+    const handleVisibilityChange = () => {
+      if (typeof document === 'undefined') return;
+      if (document.visibilityState === 'visible') {
+        setupTimer(6000);
+        runPull(); // Immediate pull on tab wake-up
+      } else {
+        setupTimer(30000); // Back off to 30s in hidden tabs to save CPU and battery
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
 
     return () => {
       if (this.syncTimer) {
         clearInterval(this.syncTimer);
         this.syncTimer = null;
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
   }
@@ -246,7 +370,7 @@ class CloudSyncService {
   async fetchAyushPassword(): Promise<string | null> {
     try {
       const endpoint = `${getSyncEndpoint()}?user=ayush`;
-      const res = await fetch(endpoint, { headers: { 'Accept': 'application/json' } });
+      const res = await fetch(endpoint, { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(6000) });
       if (res.ok) {
         const json = await res.json();
         if (json?.data?.ayushPassword) return json.data.ayushPassword;
@@ -255,7 +379,7 @@ class CloudSyncService {
 
     try {
       const docId = CLOUD_DOC_IDS['ayush'];
-      const res = await fetch(`https://api.restful-api.dev/objects/${docId}`);
+      const res = await fetch(`https://api.restful-api.dev/objects/${docId}`, { signal: AbortSignal.timeout(5000) });
       if (res.ok) {
         const json = await res.json();
         return json?.data?.ayushPassword || null;
@@ -281,7 +405,8 @@ class CloudSyncService {
           user: 'ayush',
           payload: { ayushPassword: clean },
           timestamp: Date.now()
-        })
+        }),
+        signal: AbortSignal.timeout(6000)
       });
     } catch {}
 
@@ -289,7 +414,7 @@ class CloudSyncService {
       const docId = CLOUD_DOC_IDS['ayush'];
       let existingData: any = {};
       try {
-        const getRes = await fetch(`https://api.restful-api.dev/objects/${docId}`);
+        const getRes = await fetch(`https://api.restful-api.dev/objects/${docId}`, { signal: AbortSignal.timeout(5000) });
         if (getRes.ok) {
           const json = await getRes.json();
           existingData = json?.data || {};
@@ -306,7 +431,8 @@ class CloudSyncService {
             ayushPassword: clean,
             lastUpdated: Date.now()
           }
-        })
+        }),
+        signal: AbortSignal.timeout(6000)
       });
       return res.ok;
     } catch {

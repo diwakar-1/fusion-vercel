@@ -241,6 +241,12 @@ class ApiClient {
     });
   }
 
+  async deleteDailyTask(taskId: string) {
+    return this.request<any>(`/habits/daily-tasks/${taskId}`, {
+      method: 'DELETE'
+    });
+  }
+
   async updateWatching(userName: string, currentlyWatching: any) {
     return this.request<any>('/user/watching', {
       method: 'POST',

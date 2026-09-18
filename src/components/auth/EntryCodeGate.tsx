@@ -80,12 +80,13 @@ export const EntryCodeGate: React.FC = () => {
 
     // Credentials match! Trigger UNLOCKED.gif animation
     setIsUnlocking(true);
-    setUnlockStatusText(`Access granted for ${selectedUser}. Unlocking FUSION...`);
+    setUnlockStatusText(`Access granted for ${selectedUser}. Syncing cloud data...`);
 
-    // Let the UNLOCKED.gif animation play for 1.8 seconds before entering
+    // Hydrate user state while UNLOCKED animation displays
     setTimeout(async () => {
+      setUnlockStatusText(`Loading ${selectedUser}'s playlists, tasks & streak...`);
       await loginWithEntryCode(selectedUser, clean);
-    }, 1800);
+    }, 1200);
   };
 
   // Handle first-time permanent password creation for Ayush
@@ -117,11 +118,11 @@ export const EntryCodeGate: React.FC = () => {
 
     // Trigger UNLOCKED.gif animation
     setIsUnlocking(true);
-    setUnlockStatusText('Permanent password set! Unlocking FUSION...');
+    setUnlockStatusText('Permanent password set! Syncing account data...');
 
     setTimeout(async () => {
       await loginWithEntryCode('Ayush', newPass);
-    }, 1800);
+    }, 1200);
   };
 
   return (

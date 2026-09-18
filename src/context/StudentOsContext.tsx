@@ -145,6 +145,7 @@ interface StudentOsContextType {
   dailyTasks: DailyTask[];
   toggleDailyTask: (taskId: string, completed: boolean) => void;
   addDailyTask: (task: Omit<DailyTask, 'id' | 'completed'>) => void;
+  deleteDailyTask: (taskId: string) => void;
   isStreakProtectedToday: boolean;
   habits: Habit[];
   toggleHabit: (habitId: string) => void;
@@ -225,13 +226,7 @@ const DEFAULT_DSA_SESSIONS: DsaSession[] = [];
 
 // Fresh start: Empty sheet — users add their own questions
 const DEFAULT_PDF_SHEETS: PdfQuestionSheet[] = [];
-
-const DEFAULT_DAILY_TASKS: DailyTask[] = [
-  { id: 'dt_1', title: 'Solve 2 Medium problems on LeetCode / Codeforces', platform: 'LeetCode', exp: 100, completed: false, isCoreStreakTask: true },
-  { id: 'dt_2', title: 'Complete 2 Hours DSA Deep Focus Session', platform: 'Focus Timer', exp: 100, completed: false, isCoreStreakTask: true },
-  { id: 'dt_3', title: 'Watch 1 Module from AIML YouTube Playlist (2 Hours)', platform: 'AIML Hub', exp: 100, completed: false, isCoreStreakTask: true },
-  { id: 'dt_4', title: 'Solve 1 Kata on CodeWars or HackerRank challenge', platform: 'CodeWars', exp: 60, completed: false, isCoreStreakTask: false }
-];
+const DEFAULT_DAILY_TASKS: DailyTask[] = [];
 
 // Fresh start: No pre-seeded DSA problems
 const DEFAULT_DSA_PROBLEMS: DsaProblem[] = [];
@@ -259,9 +254,14 @@ const DEFAULT_ML_MILESTONES: MlMilestone[] = [
     title: 'Self-Attention & Building GPT from Scratch',
     description: 'Multi-Head Attention, residual connections, and positional encodings.',
     completed: false,
-    resources: [{ name: 'Let\'s build GPT', url: 'https://www.youtube.com/watch?v=kCc8FmEb1nY' }]
+    resources: [{ name: "Let's build GPT", url: 'https://www.youtube.com/watch?v=kCc8FmEb1nY' }]
   }
 ];
+
+// Helper: check if object has valid non-empty fields
+const isValidObject = (obj: any): boolean => {
+  return obj && typeof obj === 'object' && Object.keys(obj).length > 0;
+};
 
 const StudentOsContext = createContext<StudentOsContextType | undefined>(undefined);
 
@@ -289,34 +289,48 @@ const getInitialChatMessages = (user: string): ChatMessage[] => {
   ];
 };
 
-// Shared YouTube Playlist Merger: "they both different upload they can only see YT playlist"
-const mergePlaylists = (existing: VideoCourse[], ...lists: (VideoCourse[] | undefined)[]): VideoCourse[] => {
+// Shared YouTube Playlist Merger with Tombstone Deletion Support
+const mergePlaylists = (existing: VideoCourse[], deletedIds: string[] = [], ...lists: (VideoCourse[] | undefined)[]): VideoCourse[] => {
   const map = new Map<string, VideoCourse>();
+  const deletedSet = new Set(deletedIds);
+
   const getKey = (c: VideoCourse) => {
     const ytId = YouTubeService.extractPlaylistId(c.youtubeUrl || '') || YouTubeService.extractVideoId(c.youtubeUrl || '');
     return ytId || c.id || (c.title ? c.title.toLowerCase().trim() : '');
   };
 
+  const isDeleted = (c: VideoCourse) => {
+    if (!c) return true;
+    if (c.id && deletedSet.has(c.id)) return true;
+    const k = getKey(c);
+    if (k && deletedSet.has(k)) return true;
+    return false;
+  };
+
   if (Array.isArray(existing)) {
     existing.forEach(c => {
-      const k = getKey(c);
-      if (k) map.set(k, c);
+      if (!isDeleted(c)) {
+        const k = getKey(c);
+        if (k) map.set(k, c);
+      }
     });
   }
 
   lists.forEach(list => {
     if (Array.isArray(list)) {
       list.forEach(c => {
-        const k = getKey(c);
-        if (!k) return;
-        if (!map.has(k)) {
-          map.set(k, c);
-        } else {
-          const prev = map.get(k)!;
-          const prevLecs = prev.lectures?.length || 0;
-          const newLecs = c.lectures?.length || 0;
-          if (newLecs > prevLecs) {
-            map.set(k, { ...prev, ...c });
+        if (!isDeleted(c)) {
+          const k = getKey(c);
+          if (!k) return;
+          if (!map.has(k)) {
+            map.set(k, c);
+          } else {
+            const prev = map.get(k)!;
+            const prevLecs = prev.lectures?.length || 0;
+            const newLecs = c.lectures?.length || 0;
+            if (newLecs > prevLecs) {
+              map.set(k, { ...prev, ...c });
+            }
           }
         }
       });
@@ -546,10 +560,28 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return localStorage.getItem('fusion_vacation_paused') === 'true';
   });
 
-  // Daily tasks & Habits
+  // Deleted Courses Tombstone List
+  const [deletedCourseIds, setDeletedCourseIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_deleted_course_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Daily tasks & Habits (Clean start without tough default tasks)
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>(() => {
     const saved = localStorage.getItem('fusion_daily_tasks');
-    return saved ? JSON.parse(saved) : DEFAULT_DAILY_TASKS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(t => !['dt_1', 'dt_2', 'dt_3', 'dt_4'].includes(t.id));
+        }
+      } catch {}
+    }
+    return DEFAULT_DAILY_TASKS;
   });
 
   const [habits, setHabits] = useState<Habit[]>(() => {
@@ -856,6 +888,11 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       } else if (type === 'PARTNER_TASK_ADDED') {
         setDailyTasks(prev => [payload, ...prev.filter(t => t.id !== payload.id)]);
+      } else if (type === 'PARTNER_TASK_DELETE') {
+        setDailyTasks(prev => prev.filter(t => t.id !== payload.taskId));
+      } else if (type === 'PARTNER_COURSE_DELETE') {
+        setCourses(prev => prev.filter(c => c.id !== payload.courseId));
+        setDeletedCourseIds(prev => Array.from(new Set([...prev, payload.courseId])));
       } else if (type === 'PARTNER_QUESTION_SOLVED') {
         if (payload.question) {
           setPdfQuestionSheets(prev => {
@@ -936,11 +973,6 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Safety fallback: allow normal cloud pushing after 3.5 seconds even if network is slow/offline
-    const fallbackTimer = setTimeout(() => {
-      hasHydratedFromCloud.current = true;
-    }, 3500);
-
     const stopSync = cloudSync.startAutoSync(
       () => currentUser,
       (remoteData, partnerData) => {
@@ -977,12 +1009,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               return updated;
             });
           }
-          if (Array.isArray(remoteData.dailyTasks) && remoteData.dailyTasks.length > 0) {
+          if (Array.isArray(remoteData.dailyTasks)) {
             setDailyTasks(remoteData.dailyTasks);
             try { localStorage.setItem('fusion_daily_tasks', JSON.stringify(remoteData.dailyTasks)); } catch {}
           }
           if (Array.isArray(remoteData.notes) && remoteData.notes.length > 0) {
-            // Merge remote notes into local instead of blindly overwriting (avoids empty cloud payload wiping local notes)
+            // Merge remote notes into local instead of blindly overwriting
             setNotes(prev => {
               const merged = [...prev];
               remoteData.notes!.forEach((rn: any) => {
@@ -1020,12 +1052,21 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               return merged;
             });
           }
-          // Shared YouTube Playlist Engine: "they both different upload they can only see YT playlist"
+          // Sync deletedCourseIds tombstone list
+          if (Array.isArray(remoteData.deletedCourseIds)) {
+            setDeletedCourseIds(prev => {
+              const merged = Array.from(new Set([...prev, ...(remoteData.deletedCourseIds || [])]));
+              try { localStorage.setItem('fusion_deleted_course_ids', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
+          }
+          // Shared YouTube Playlist Engine: respect deletions across devices
           const allPartnerCourses = Array.isArray(partnerData?.courses) ? partnerData.courses : [];
           const allRemoteCourses = Array.isArray(remoteData?.courses) ? remoteData.courses : [];
           if (allRemoteCourses.length > 0 || allPartnerCourses.length > 0) {
             setCourses(prev => {
-              const merged = mergePlaylists(prev, allRemoteCourses, allPartnerCourses);
+              const activeDeleted = Array.from(new Set([...deletedCourseIds, ...(remoteData?.deletedCourseIds || [])]));
+              const merged = mergePlaylists(prev, activeDeleted, allRemoteCourses, allPartnerCourses);
               try { localStorage.setItem('fusion_courses', JSON.stringify(merged)); } catch {}
               return merged;
             });
@@ -1108,10 +1149,10 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               todayStudiedMinutes: partnerData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes
             }));
           }
-          // Shared YouTube Playlists added by Partner: "they both different upload they can only see YT playlist"
+          // Shared YouTube Playlists added by Partner
           if (Array.isArray(partnerData.courses) && partnerData.courses.length > 0) {
             setCourses(prev => {
-              const merged = mergePlaylists(prev, partnerData.courses);
+              const merged = mergePlaylists(prev, deletedCourseIds, partnerData.courses);
               try { localStorage.setItem('fusion_courses', JSON.stringify(merged)); } catch {}
               return merged;
             });
@@ -1141,7 +1182,6 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     return () => {
       stopSync();
-      clearTimeout(fallbackTimer);
     };
   }, [isAuthenticated, currentUser, playNotificationChime]);
 
@@ -1155,6 +1195,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       notes,
       timetableSchedule,
       courses,
+      deletedCourseIds,
       pdfQuestionSheets,
       habits,
       goals,
@@ -1179,6 +1220,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     timetableSchedule,
     studySessions,
     courses,
+    deletedCourseIds,
     pdfQuestionSheets,
     habits,
     goals,
@@ -1204,7 +1246,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return true;
   };
 
-  // Auth Action
+  // Auth Action with Direct Cloud Hydration for Any Device / PC
   const loginWithEntryCode = async (user: 'Diwakar' | 'Ayush', code: string): Promise<boolean> => {
     const clean = code.trim();
     let isValid = false;
@@ -1232,21 +1274,75 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     if (isValid) {
-      hasHydratedFromCloud.current = false;
       setCurrentUser(user);
-      setIsAuthenticated(true);
-      localStorage.setItem('fusion_authenticated', 'true');
       localStorage.setItem('fusion_user', user);
 
-      const saved = localStorage.getItem(`fusion_profile_${user.toLowerCase()}`);
-      let targetProfile = user === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          targetProfile = { ...targetProfile, ...parsed };
-        } catch {}
+      // Hydrate directly from cloud so data is NEVER 0 on a different system or browser
+      try {
+        const { data: remoteData } = await cloudSync.fetchStateDirect(user);
+        if (remoteData) {
+          if (remoteData.profile) {
+            const defProfile = user === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
+            const updatedProfile = {
+              ...defProfile,
+              ...remoteData.profile,
+              totalXp: Math.max(defProfile.totalXp, remoteData.profile.totalXp ?? 100),
+              streakDays: Math.max(defProfile.streakDays, remoteData.profile.streakDays ?? 0),
+              todayStudiedMinutes: Math.max(defProfile.todayStudiedMinutes, remoteData.profile.todayStudiedMinutes ?? 0)
+            };
+            setProfile(updatedProfile);
+            try { localStorage.setItem(`fusion_profile_${user.toLowerCase()}`, JSON.stringify(updatedProfile)); } catch {}
+          }
+          if (Array.isArray(remoteData.deletedCourseIds)) {
+            setDeletedCourseIds(prev => {
+              const merged = Array.from(new Set([...prev, ...(remoteData.deletedCourseIds || [])]));
+              try { localStorage.setItem('fusion_deleted_course_ids', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
+          }
+          if (Array.isArray(remoteData.courses)) {
+            const currentDeleted = Array.isArray(remoteData.deletedCourseIds) ? remoteData.deletedCourseIds : [];
+            const delSet = new Set([...deletedCourseIds, ...currentDeleted]);
+            const filtered = remoteData.courses.filter(c => !delSet.has(c.id));
+            setCourses(filtered);
+            try { localStorage.setItem('fusion_courses', JSON.stringify(filtered)); } catch {}
+          }
+          if (Array.isArray(remoteData.dailyTasks)) {
+            setDailyTasks(remoteData.dailyTasks);
+            try { localStorage.setItem('fusion_daily_tasks', JSON.stringify(remoteData.dailyTasks)); } catch {}
+          }
+          if (Array.isArray(remoteData.notes)) {
+            setNotes(remoteData.notes);
+            try { localStorage.setItem('fusion_notes', JSON.stringify(remoteData.notes)); } catch {}
+          }
+          if (Array.isArray(remoteData.studyLogs)) {
+            setStudySessions(remoteData.studyLogs);
+            try { localStorage.setItem('fusion_study_sessions', JSON.stringify(remoteData.studyLogs)); } catch {}
+          }
+          if (Array.isArray(remoteData.habits)) {
+            setHabits(remoteData.habits);
+            try { localStorage.setItem('fusion_habits', JSON.stringify(remoteData.habits)); } catch {}
+          }
+          if (Array.isArray(remoteData.goals)) {
+            setGoals(remoteData.goals);
+            try { localStorage.setItem('fusion_goals', JSON.stringify(remoteData.goals)); } catch {}
+          }
+          if (remoteData.geminiApiKey) {
+            setGeminiApiKeyState(remoteData.geminiApiKey);
+            GeminiService.setApiKey(user, remoteData.geminiApiKey);
+          }
+          if (remoteData.youtubeApiKey) {
+            setYoutubeApiKeyState(remoteData.youtubeApiKey);
+            YouTubeService.setApiKey(user, remoteData.youtubeApiKey);
+          }
+        }
+      } catch (e) {
+        console.warn('[Direct Login Cloud Hydration Failed, using local cache]', e);
       }
-      setProfile(targetProfile);
+
+      hasHydratedFromCloud.current = true;
+      setIsAuthenticated(true);
+      localStorage.setItem('fusion_authenticated', 'true');
       setGeminiApiKeyState(GeminiService.getApiKey(user));
       setYoutubeApiKeyState(YouTubeService.getApiKey(user));
       setChatMessages(getInitialChatMessages(user));
@@ -1575,11 +1671,40 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const deleteCourse = (id: string) => {
-    setCourses(prev => {
-      const updated = prev.filter(c => c.id !== id);
+    const targetCourse = courses.find(c => c.id === id);
+    const ytKey = targetCourse?.youtubeUrl ? (YouTubeService.extractPlaylistId(targetCourse.youtubeUrl) || YouTubeService.extractVideoId(targetCourse.youtubeUrl)) : null;
+
+    const nextDeleted = Array.from(new Set([...deletedCourseIds, id, ...(ytKey ? [ytKey] : [])]));
+    setDeletedCourseIds(nextDeleted);
+    try {
+      localStorage.setItem('fusion_deleted_course_ids', JSON.stringify(nextDeleted));
+    } catch {}
+
+    const updated = courses.filter(c => c.id !== id);
+    setCourses(updated);
+    try {
       localStorage.setItem('fusion_courses', JSON.stringify(updated));
-      return updated;
+    } catch {}
+
+    if (activePlayingCourse?.id === id) {
+      setActivePlayingCourse(updated[0] || null);
+      setActiveLecture(updated[0]?.lectures?.[0] || null);
+    }
+
+    // Immediately push to cloud sync with deletedCourseIds
+    cloudSync.pushStateDirect(currentUser, {
+      courses: updated,
+      deletedCourseIds: nextDeleted
     });
+
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_COURSE_DELETE',
+        sender: currentUser,
+        payload: { courseId: id }
+      });
+    }
+
     api.deleteCourse(id).catch(e => console.warn('api deleteCourse error', e));
   };
 
@@ -2016,6 +2141,27 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         type: 'PARTNER_TASK_ADDED',
         sender: currentUser,
         payload: newTask
+      });
+    }
+  };
+
+  const deleteDailyTask = (taskId: string) => {
+    setDailyTasks(prev => {
+      const updated = prev.filter(t => t.id !== taskId);
+      try {
+        localStorage.setItem('fusion_daily_tasks', JSON.stringify(updated));
+      } catch {}
+      cloudSync.pushStateDirect(currentUser, { dailyTasks: updated });
+      return updated;
+    });
+
+    api.deleteDailyTask(taskId).catch((e: any) => console.warn('api deleteDailyTask error', e));
+
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_TASK_DELETE',
+        sender: currentUser,
+        payload: { taskId }
       });
     }
   };
@@ -2767,6 +2913,7 @@ INSTRUCTIONS:
         dailyTasks,
         toggleDailyTask,
         addDailyTask,
+        deleteDailyTask,
         isStreakProtectedToday,
         habits,
         toggleHabit,

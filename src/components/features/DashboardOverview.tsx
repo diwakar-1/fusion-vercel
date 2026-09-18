@@ -27,7 +27,11 @@ import {
   Clock,
   ExternalLink,
   Lock,
-  Users
+  Users,
+  Plus,
+  Trash2,
+  X,
+  Dices
 } from 'lucide-react';
 
 export const DashboardOverview: React.FC = () => {
@@ -51,6 +55,8 @@ export const DashboardOverview: React.FC = () => {
     pdfQuestionSheets,
     dailyTasks,
     toggleDailyTask,
+    addDailyTask,
+    deleteDailyTask,
     isBackendConnected,
     isStreakProtectedToday
   } = useStudentOs();
@@ -60,6 +66,34 @@ export const DashboardOverview: React.FC = () => {
     xp: number;
     streakGranted: boolean;
   } | null>(null);
+
+  // User-created daily task modal state
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskPlatform, setTaskPlatform] = useState('General');
+  const [taskXpMode, setTaskXpMode] = useState<'custom' | 'random'>('random');
+  const [customXp, setCustomXp] = useState(50);
+  const [isCoreStreakTask, setIsCoreStreakTask] = useState(false);
+
+  const handleCreateDailyTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskTitle.trim()) return;
+    const finalXp = taskXpMode === 'random'
+      ? Math.floor(Math.random() * 56) + 25 // 25 to 80 XP
+      : Math.max(10, Number(customXp) || 50);
+
+    addDailyTask({
+      title: taskTitle.trim(),
+      platform: taskPlatform.trim() || 'General',
+      exp: finalXp,
+      isCoreStreakTask: isCoreStreakTask,
+      isCustom: true,
+      createdBy: profile.name
+    });
+    setTaskTitle('');
+    setShowAddTaskModal(false);
+    triggerSparkleConfetti({ particleCount: 50, spread: 60 });
+  };
 
   const formatTimer = (totalSeconds: number) => {
     const mins = Math.floor(totalSeconds / 60);
@@ -499,137 +533,236 @@ export const DashboardOverview: React.FC = () => {
               </div>
               <div>
                 <h4 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#18181B', margin: 0 }}>
-                  Core Tasks & Streak Lock (Complete to Unlock Animation & XP)
+                  Daily Tasks & Goals
                 </h4>
                 <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  Completing core big tasks gives +100 XP and streak protection energy!
+                  Add your own tasks, choose custom or random XP, and build your streak at your own pace!
                 </span>
               </div>
             </div>
           </div>
 
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 14px',
-              borderRadius: 'var(--radius-pill)',
-              fontSize: '0.78rem',
-              fontWeight: 700,
-              background: 'rgba(234, 88, 12, 0.1)',
-              color: '#EA580C',
-              border: '1px solid rgba(234, 88, 12, 0.25)'
-            }}
-          >
-            <img src="/icons/STREAK.gif" alt="Streak" style={{ width: 18, height: 18, objectFit: 'contain' }} />
-            <span>{dailyTasks.filter(t => t.completed).length} / {dailyTasks.length} Completed</span>
-          </span>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-          {dailyTasks.map(task => (
-            <div
-              key={task.id}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowAddTaskModal(true)}
+              className="charcoal-pill-btn"
               style={{
+                padding: '7px 16px',
+                fontSize: '0.82rem',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px 16px',
-                borderRadius: '16px',
-                background: task.completed ? 'rgba(240, 253, 244, 0.9)' : '#FFFFFF',
-                border: task.completed ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(0,0,0,0.06)',
-                transition: 'all 0.2s ease'
+                gap: 6,
+                cursor: 'pointer',
+                background: '#18181B',
+                color: '#FFFFFF'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                <button
-                  onClick={() => {
-                    if (!task.completed) {
-                      handleCompleteBigTask(task.id, task.title, task.exp);
-                    } else {
-                      toggleDailyTask(task.id, false);
-                    }
-                  }}
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: '8px',
-                    border: task.completed ? 'none' : '2px solid #CBD5E1',
-                    background: task.completed ? '#16A34A' : '#FFFFFF',
-                    color: '#FFFFFF',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    flexShrink: 0
-                  }}
-                  title={task.completed ? 'Mark uncompleted' : 'Complete big task'}
-                >
-                  {task.completed && <Check size={16} strokeWidth={3} />}
-                </button>
+              <Plus size={15} />
+              <span>Add Daily Task</span>
+            </button>
 
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: '0.88rem',
-                      fontWeight: 700,
-                      color: task.completed ? '#15803D' : '#1E293B',
-                      textDecoration: task.completed ? 'line-through' : 'none',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                background: 'rgba(234, 88, 12, 0.1)',
+                color: '#EA580C',
+                border: '1px solid rgba(234, 88, 12, 0.25)'
+              }}
+            >
+              <img src="/icons/STREAK.gif" alt="Streak" style={{ width: 18, height: 18, objectFit: 'contain' }} />
+              <span>{dailyTasks.filter(t => t.completed).length} / {dailyTasks.length} Completed</span>
+            </span>
+          </div>
+        </div>
+
+        {dailyTasks.length === 0 ? (
+          <div
+            style={{
+              padding: '36px 20px',
+              textAlign: 'center',
+              borderRadius: '16px',
+              background: 'rgba(255, 255, 255, 0.7)',
+              border: '1.5px dashed rgba(234, 88, 12, 0.3)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 12
+            }}
+          >
+            <div style={{ fontSize: '2rem' }}>🎯</div>
+            <div style={{ fontWeight: 800, color: '#1E293B', fontSize: '1rem' }}>
+              No daily tasks yet!
+            </div>
+            <div style={{ fontSize: '0.84rem', color: '#64748B', maxWidth: 420, lineHeight: 1.5 }}>
+              You are in complete control of your study schedule. Click below to add tasks tailored to your learning pace with custom or random XP!
+            </div>
+            <button
+              onClick={() => setShowAddTaskModal(true)}
+              className="charcoal-pill-btn"
+              style={{
+                padding: '9px 20px',
+                fontSize: '0.84rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                cursor: 'pointer',
+                marginTop: 4
+              }}
+            >
+              <Plus size={16} />
+              <span>Add Your First Task</span>
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+            {dailyTasks.map(task => (
+              <div
+                key={task.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 16px',
+                  borderRadius: '16px',
+                  background: task.completed ? 'rgba(240, 253, 244, 0.9)' : '#FFFFFF',
+                  border: task.completed ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(0,0,0,0.06)',
+                  transition: 'all 0.2s ease',
+                  gap: 10
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                  <button
+                    onClick={() => {
+                      if (!task.completed) {
+                        handleCompleteBigTask(task.id, task.title, task.exp);
+                      } else {
+                        toggleDailyTask(task.id, false);
+                      }
                     }}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '8px',
+                      border: task.completed ? 'none' : '2px solid #CBD5E1',
+                      background: task.completed ? '#16A34A' : '#FFFFFF',
+                      color: '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      flexShrink: 0
+                    }}
+                    title={task.completed ? 'Mark uncompleted' : 'Complete task'}
                   >
-                    {task.title}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600 }}>
-                      {task.platform} • {task.xpClaimed ? '✓ XP Claimed' : `+${task.exp} XP`}
-                    </span>
-                    {task.completed && (
-                      <span
-                        style={{
-                          fontSize: '0.68rem',
-                          fontWeight: 700,
-                          color: task.completedBy === 'Ayush' ? '#7C3AED' : '#059669',
-                          background: task.completedBy === 'Ayush' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                          padding: '1px 6px',
-                          borderRadius: '6px'
-                        }}
-                      >
-                        ✓ Completed by {task.completedBy || profile.name}
+                    {task.completed && <Check size={16} strokeWidth={3} />}
+                  </button>
+
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                        color: task.completed ? '#15803D' : '#1E293B',
+                        textDecoration: task.completed ? 'line-through' : 'none',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
+                      {task.title}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 600 }}>
+                        {task.platform} • {task.xpClaimed ? '✓ XP Claimed' : `+${task.exp} XP`}
                       </span>
-                    )}
+                      {task.isCoreStreakTask && (
+                        <span
+                          style={{
+                            fontSize: '0.66rem',
+                            fontWeight: 700,
+                            color: '#DC2626',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            padding: '1px 6px',
+                            borderRadius: '6px'
+                          }}
+                        >
+                          Core Streak
+                        </span>
+                      )}
+                      {task.completed && (
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            color: task.completedBy === 'Ayush' ? '#7C3AED' : '#059669',
+                            background: task.completedBy === 'Ayush' ? 'rgba(124, 58, 237, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                            padding: '1px 6px',
+                            borderRadius: '6px'
+                          }}
+                        >
+                          ✓ by {task.completedBy || profile.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {!task.completed && (
-                <button
-                  onClick={() => handleCompleteBigTask(task.id, task.title, task.exp)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: 'var(--radius-pill)',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                    color: '#FFFFFF',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    flexShrink: 0
-                  }}
-                >
-                  <Sparkles size={12} />
-                  <span>Done</span>
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {!task.completed && (
+                    <button
+                      onClick={() => handleCompleteBigTask(task.id, task.title, task.exp)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: 'var(--radius-pill)',
+                        border: 'none',
+                        background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                        color: '#FFFFFF',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4
+                      }}
+                    >
+                      <Sparkles size={12} />
+                      <span>Done</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Delete task "${task.title}"?`)) {
+                        deleteDailyTask(task.id);
+                      }
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#94A3B8',
+                      cursor: 'pointer',
+                      padding: '5px',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                    title="Delete task"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </GlassCard>
 
       {/* 3. Real-Time Co-Study Banner with Robot Mascot */}
@@ -884,6 +1017,241 @@ export const DashboardOverview: React.FC = () => {
           </button>
         </GlassCard>
       </div>
+
+      {/* Add Daily Task Modal */}
+      {showAddTaskModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+          onClick={() => setShowAddTaskModal(false)}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: '24px',
+              padding: '28px',
+              maxWidth: '480px',
+              width: '100%',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+              position: 'relative'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: '12px',
+                    background: 'rgba(234, 88, 12, 0.1)',
+                    color: '#EA580C',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Target size={20} />
+                </div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#18181B' }}>
+                  Add Daily Task
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowAddTaskModal(false)}
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.45 }}>
+              Set a task tailored to your current learning level. You can choose custom XP or roll for surprise XP!
+            </p>
+
+            <form onSubmit={handleCreateDailyTask} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6, color: '#334155' }}>
+                  Task Title
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Watch 1 React lecture, Revise Loops, Solve 1 Easy problem..."
+                  value={taskTitle}
+                  onChange={e => setTaskTitle(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.15)',
+                    fontSize: '0.92rem',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6, color: '#334155' }}>
+                  Platform / Category
+                </label>
+                <select
+                  value={taskPlatform}
+                  onChange={e => setTaskPlatform(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.15)',
+                    fontSize: '0.92rem',
+                    outline: 'none',
+                    background: '#FFFFFF',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  <option value="General">General / Self-Paced</option>
+                  <option value="YouTube Hub">YouTube Hub / Lecture</option>
+                  <option value="LeetCode (Easy)">LeetCode (Beginner / Easy)</option>
+                  <option value="Revision & Notes">Revision & Notes</option>
+                  <option value="College Work">College / Lab Work</option>
+                  <option value="Coding Practice">Coding Practice</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 8, color: '#334155' }}>
+                  XP Reward Mode
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setTaskXpMode('random')}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      border: taskXpMode === 'random' ? '2px solid #EA580C' : '1px solid rgba(0,0,0,0.12)',
+                      background: taskXpMode === 'random' ? 'rgba(234, 88, 12, 0.08)' : '#FFFFFF',
+                      color: taskXpMode === 'random' ? '#EA580C' : '#64748B',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Dices size={16} />
+                    <span>🎲 Random XP (25-80)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTaskXpMode('custom')}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      border: taskXpMode === 'custom' ? '2px solid #4F46E5' : '1px solid rgba(0,0,0,0.12)',
+                      background: taskXpMode === 'custom' ? 'rgba(79, 70, 229, 0.08)' : '#FFFFFF',
+                      color: taskXpMode === 'custom' ? '#4F46E5' : '#64748B',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Award size={16} />
+                    <span>Custom XP</span>
+                  </button>
+                </div>
+
+                {taskXpMode === 'custom' ? (
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {[25, 50, 75, 100].map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setCustomXp(val)}
+                        style={{
+                          flex: 1,
+                          padding: '6px 0',
+                          borderRadius: '8px',
+                          border: customXp === val ? '2px solid #4F46E5' : '1px solid rgba(0,0,0,0.1)',
+                          background: customXp === val ? '#4F46E5' : 'rgba(0,0,0,0.03)',
+                          color: customXp === val ? '#FFFFFF' : '#475569',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        +{val}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, fontSize: '0.76rem', color: '#EA580C', fontWeight: 600 }}>
+                    🎲 Surprise Roll: When you add this task, you'll get a random bonus between +25 and +80 XP upon completion!
+                  </div>
+                )}
+              </div>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '6px 2px',
+                  color: '#334155'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isCoreStreakTask}
+                  onChange={e => setIsCoreStreakTask(e.target.checked)}
+                  style={{ width: 17, height: 17 }}
+                />
+                <span>Set as Core Task (Helps protect daily streak energy)</span>
+              </label>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddTaskModal(false)}
+                  className="glass-pill"
+                  style={{ flex: 1, padding: '12px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="charcoal-pill-btn"
+                  style={{ flex: 1, padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                >
+                  <Plus size={16} />
+                  <span>Add Task</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

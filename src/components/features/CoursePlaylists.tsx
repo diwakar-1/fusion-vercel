@@ -560,8 +560,10 @@ export const CoursePlaylists: React.FC = () => {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  deleteCourse(c.id);
-                  setSelectedCourseIndex(0);
+                  if (window.confirm(`Are you sure you want to remove playlist "${c.title}"?`)) {
+                    deleteCourse(c.id);
+                    setSelectedCourseIndex(0);
+                  }
                 }}
                 style={{
                   border: 'none',
@@ -655,8 +657,8 @@ export const CoursePlaylists: React.FC = () => {
             <iframe
               src={
                 activeLecture.videoId
-                  ? `https://www.youtube-nocookie.com/embed/${activeLecture.videoId}?autoplay=0&rel=0&enablejsapi=1`
-                  : activeCourse.embedUrl || `https://www.youtube-nocookie.com/embed/EAR7De6G0ms?autoplay=0&rel=0&enablejsapi=1`
+                  ? `https://www.youtube.com/embed/${activeLecture.videoId}?rel=0&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`
+                  : activeCourse.embedUrl?.replace('youtube-nocookie.com', 'youtube.com') || `https://www.youtube.com/embed/EAR7De6G0ms?rel=0`
               }
               title={activeLecture.title}
               style={{
@@ -668,6 +670,7 @@ export const CoursePlaylists: React.FC = () => {
                 border: 'none'
               }}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
               allowFullScreen
             />
           </div>
