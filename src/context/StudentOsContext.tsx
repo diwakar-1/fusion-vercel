@@ -876,10 +876,10 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           currentlyWatching: payload
         }));
       } else if (type === 'PARTNER_CHAT_MESSAGE') {
-        if (!payload?.id) return;
+        if (!payload?.text) return;
         setPartnerChatMessages(prev => {
-          if (prev.some(m => m.id === payload.id)) return prev;
-          const next = [...prev, payload];
+          const next = cloudSync.mergeChatMessages(prev, [payload]);
+          if (next.length === prev.length) return prev;
           try { localStorage.setItem('fusion_partner_chat', JSON.stringify(next)); } catch {}
           return next;
         });
@@ -984,6 +984,14 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       () => currentUser,
       (remoteData, partnerData, meta) => {
         hasHydratedFromCloud.current = true;
+        if (Array.isArray(meta?.duoChat) && meta!.duoChat!.length > 0) {
+          setPartnerChatMessages(prev => {
+            const merged = cloudSync.mergeChatMessages(prev, meta!.duoChat!);
+            if (merged.length === prev.length) return prev;
+            try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+            return merged;
+          });
+        }
         if (remoteData) {
           if (remoteData.profile) {
             setProfile(prev => {
@@ -1155,17 +1163,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               localStorage.setItem('fusion_ayush_password_created', 'true');
             } catch {}
           }
-          // Sync self partner chat messages
+          // Sync self partner chat messages (merge only — never replace shared store)
           if (Array.isArray(remoteData.partnerChatMessages) && remoteData.partnerChatMessages.length > 0) {
             setPartnerChatMessages(prev => {
-              const existingIds = new Set(prev.map(m => m.id));
-              const toAdd = remoteData.partnerChatMessages!.filter((m: any) => !existingIds.has(m.id));
-              if (toAdd.length > 0) {
-                const merged = [...prev, ...toAdd].sort((a, b) => a.id.localeCompare(b.id));
-                try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
-                return merged;
-              }
-              return prev;
+              const merged = cloudSync.mergeChatMessages(prev, remoteData.partnerChatMessages!);
+              if (merged.length === prev.length) return prev;
+              try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+              return merged;
             });
           }
         }
@@ -1205,17 +1209,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               return merged;
             });
           }
-          // Cross-device Partner Chat Sync
+          // Cross-device Partner Chat Sync (merge only)
           if (Array.isArray(partnerData.partnerChatMessages) && partnerData.partnerChatMessages.length > 0) {
             setPartnerChatMessages(prev => {
-              const existingIds = new Set(prev.map(m => m.id));
-              const toAdd = partnerData.partnerChatMessages.filter((m: any) => !existingIds.has(m.id));
-              if (toAdd.length > 0) {
-                const merged = [...prev, ...toAdd].sort((a, b) => a.id.localeCompare(b.id));
-                try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
-                return merged;
-              }
-              return prev;
+              const merged = cloudSync.mergeChatMessages(prev, partnerData.partnerChatMessages);
+              if (merged.length === prev.length) return prev;
+              try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+              return merged;
             });
           }
           // Cross-device Real-Time Nudges
@@ -1228,22 +1228,41 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     );
 
-    const chatTimer = setInterval(async () => {
+    const applyChatPull = async () => {
       const msgs = await cloudSync.pullDuoChat();
       if (!msgs.length) return;
       setPartnerChatMessages(prev => {
-        const existingIds = new Set(prev.map(m => m.id));
-        const toAdd = msgs.filter((m: any) => m?.id && !existingIds.has(m.id));
-        if (!toAdd.length) return prev;
-        const merged = [...prev, ...toAdd];
+        const merged = cloudSync.mergeChatMessages(prev, msgs);
+        if (merged.length === prev.length) return prev;
         try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
         return merged;
       });
-    }, 8000);
+    };
+
+    // Faster poll when WS is down; slower when connected (avoids Render 429)
+    let chatTimer: ReturnType<typeof setInterval> | null = null;
+    const scheduleChatPoll = (connected: boolean) => {
+      if (chatTimer) clearInterval(chatTimer);
+      chatTimer = setInterval(applyChatPull, connected ? 12000 : 2500);
+    };
+    scheduleChatPoll(realtimeWs.isConnected());
+    applyChatPull();
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') applyChatPull();
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    const unsubStatus = realtimeWs.onStatus((connected) => {
+      scheduleChatPoll(connected);
+      if (connected) applyChatPull();
+    });
 
     return () => {
       stopSync();
-      clearInterval(chatTimer);
+      if (chatTimer) clearInterval(chatTimer);
+      document.removeEventListener('visibilitychange', onVis);
+      unsubStatus();
     };
   }, [isAuthenticated, currentUser, playNotificationChime]);
 
@@ -1260,20 +1279,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const type = String(event?.type || '').toUpperCase();
       if (type !== 'PARTNER_CHAT_MESSAGE') return;
       const payload = event.payload;
-      if (!payload?.id || !payload?.text) return;
+      if (!payload?.text) return;
       setPartnerChatMessages(prev => {
-        if (prev.some(m => m.id === payload.id)) return prev;
-        const next = [
-          ...prev,
-          {
-            id: payload.id,
-            sender: payload.sender,
-            text: payload.text,
-            timestamp: payload.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          }
-        ];
-        try { localStorage.setItem('fusion_partner_chat', JSON.stringify(next)); } catch {}
-        return next;
+        const merged = cloudSync.mergeChatMessages(prev, [payload]);
+        if (merged.length === prev.length) return prev;
+        try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+        return merged;
       });
       setIsBackendConnected(true);
     });
@@ -1311,7 +1322,6 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       youtubeApiKey: youtubeApiKey || undefined,
       aiChatMessages: chatMessages,
       studyLogs: studySessions,
-      partnerChatMessages,
       isVacationPaused,
       hasWatchedPlaylistVideoToday,
       ayushPassword: currentUser === 'Ayush' ? (localStorage.getItem('fusion_ayush_password') || undefined) : undefined,
@@ -1334,7 +1344,6 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     mlMilestones,
     geminiApiKey,
     youtubeApiKey,
-    partnerChatMessages,
     isVacationPaused,
     hasWatchedPlaylistVideoToday
   ]);
@@ -1459,21 +1468,23 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             YouTubeService.setApiKey(user, remoteData.youtubeApiKey);
           }
           if (Array.isArray(remoteData.partnerChatMessages) && remoteData.partnerChatMessages.length > 0) {
-            setPartnerChatMessages(remoteData.partnerChatMessages);
-            try { localStorage.setItem('fusion_partner_chat', JSON.stringify(remoteData.partnerChatMessages)); } catch {}
+            setPartnerChatMessages(prev => {
+              const merged = cloudSync.mergeChatMessages(prev, remoteData.partnerChatMessages!);
+              try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
           }
         }
       } catch (e) {
         console.warn('[Direct Login Cloud Hydration Failed, using local cache]', e);
       }
 
-      // Also pull shared duo chat
+      // Shared duo chat is source of truth
       try {
         const msgs = await cloudSync.pullDuoChat();
         if (msgs.length) {
           setPartnerChatMessages(prev => {
-            const ids = new Set(prev.map(m => m.id));
-            const merged = [...prev, ...msgs.filter((m: any) => m?.id && !ids.has(m.id))];
+            const merged = cloudSync.mergeChatMessages(prev, msgs);
             try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
             return merged;
           });
@@ -2355,29 +2366,39 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Partner Live Chat (shared duo store + WebSocket push)
   const sendPartnerChatMessage = (text: string) => {
     if (!text.trim()) return;
+    const displaySender = currentUser.toLowerCase().includes('ayush') ? 'Ayush' : 'Diwakar';
     const msg = {
       id: 'pc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-      sender: currentUser,
+      sender: displaySender,
       text: text.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
     setPartnerChatMessages(prev => {
-      const next = [...prev, msg];
+      const next = cloudSync.mergeChatMessages(prev, [msg]);
       try { localStorage.setItem('fusion_partner_chat', JSON.stringify(next)); } catch {}
-      cloudSync.pushState(currentUser, {
-        partnerChatMessages: next,
-        updatedAt: Date.now()
-      });
       return next;
     });
 
-    // Single POST — backend persists + broadcasts over /ws
-    cloudSync.pushDuoChat(msg).catch(() => {});
+    // Persist + server WS broadcast (with retries). Also fan-out on client WS as backup.
+    cloudSync.pushDuoChat(msg).then((ok) => {
+      if (!ok) {
+        // One more pull so sender still converges if POST was rate-limited
+        cloudSync.pullDuoChat().then((msgs) => {
+          if (!msgs.length) return;
+          setPartnerChatMessages(prev => {
+            const merged = cloudSync.mergeChatMessages(prev, msgs);
+            try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+            return merged;
+          });
+        });
+      }
+    });
+    realtimeWs.send('PARTNER_CHAT_MESSAGE', msg);
 
     if (broadcastChannel) {
       broadcastChannel.postMessage({
         type: 'PARTNER_CHAT_MESSAGE',
-        sender: currentUser,
+        sender: displaySender,
         payload: msg
       });
     }
@@ -2604,16 +2625,7 @@ INSTRUCTIONS:
           setDsaSessions(res.data.dsaSessions);
           localStorage.setItem('fusion_dsa_sessions', JSON.stringify(res.data.dsaSessions));
         }
-        if (Array.isArray(res.data.partnerChat)) {
-          setPartnerChatMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const toAdd = res.data!.partnerChat.filter((m: any) => m?.id && !existingIds.has(m.id));
-            if (!toAdd.length) return prev;
-            const merged = [...prev, ...toAdd];
-            try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
-            return merged;
-          });
-        }
+        // partnerChat handled only via /friends/chat + WebSocket (avoid stale overwrites)
         const payload = res.data;
         if (Array.isArray(payload.courses) && payload.courses.length > 0) {
           setCourses(prev => {
@@ -2707,10 +2719,10 @@ INSTRUCTIONS:
     }
   };
 
-  // Initial & Continuous Real-time Heartbeat Polling (every 4s)
+  // Light backend heartbeat (was 4s — caused Render 429 and missing chat)
   useEffect(() => {
     refreshBackendData();
-    const interval = setInterval(refreshBackendData, 4000);
+    const interval = setInterval(refreshBackendData, 45000);
     return () => clearInterval(interval);
   }, [refreshBackendData]);
 

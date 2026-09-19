@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStudentOs } from '../../context/StudentOsContext';
 import { GlassCard } from '../common/GlassCard';
 import {
@@ -51,7 +51,14 @@ export const FriendsStudyRoom: React.FC = () => {
   } = useStudentOs();
 
   const [chatInput, setChatInput] = useState('');
+  const chatFeedRef = useRef<HTMLDivElement>(null);
   const [taskFilter, setTaskFilter] = useState<'All' | 'Completed' | 'Pending' | 'Custom' | 'Core'>('All');
+
+  useEffect(() => {
+    const el = chatFeedRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [partnerChatMessages]);
   const [showAddCustomTaskModal, setShowAddCustomTaskModal] = useState<boolean>(false);
   const [customTaskTitle, setCustomTaskTitle] = useState('');
   const [customTaskPlatform, setCustomTaskPlatform] = useState('LeetCode');
@@ -875,6 +882,7 @@ export const FriendsStudyRoom: React.FC = () => {
 
         {/* Message Feed */}
         <div
+          ref={chatFeedRef}
           style={{
             maxHeight: '320px',
             overflowY: 'auto',
@@ -885,12 +893,17 @@ export const FriendsStudyRoom: React.FC = () => {
             marginBottom: 16
           }}
         >
-          {partnerChatMessages.map(msg => {
-            const isMe = msg.sender.toLowerCase() === profile.name.toLowerCase();
+          {partnerChatMessages.length === 0 && (
+            <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', padding: 16 }}>
+              No messages yet — say hi to start the duo chat.
+            </div>
+          )}
+          {partnerChatMessages.map((msg, idx) => {
+            const isMe = String(msg.sender || '').toLowerCase() === String(profile.name || '').toLowerCase();
 
             return (
               <div
-                key={msg.id}
+                key={msg.id || `chat_${idx}`}
                 style={{
                   display: 'flex',
                   flexDirection: 'column',

@@ -6,6 +6,7 @@
 const RENDER_WS = 'wss://fussion-api.onrender.com/ws';
 
 type WsHandler = (event: { type: string; payload: any; timestamp?: any; from_user?: string }) => void;
+type StatusHandler = (connected: boolean) => void;
 
 function buildWsUrl(user?: string): string {
   const fromEnv = ((import.meta as any).env?.VITE_WS_URL as string | undefined)?.trim();
@@ -26,6 +27,7 @@ function buildWsUrl(user?: string): string {
 class RealtimeWsClient {
   private ws: WebSocket | null = null;
   private handlers = new Set<WsHandler>();
+  private statusHandlers = new Set<StatusHandler>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private intentionalClose = false;
@@ -42,9 +44,22 @@ class RealtimeWsClient {
     return () => this.handlers.delete(handler);
   }
 
+  onStatus(handler: StatusHandler): () => void {
+    this.statusHandlers.add(handler);
+    handler(this.isConnected());
+    return () => this.statusHandlers.delete(handler);
+  }
+
   connect(user: string) {
     this.currentUser = user || '';
     this.intentionalClose = false;
+    // Force fresh socket when user changes
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {}
+      this.ws = null;
+    }
     this.open();
   }
 
@@ -57,7 +72,7 @@ class RealtimeWsClient {
       } catch {}
       this.ws = null;
     }
-    this.connected = false;
+    this.setConnected(false);
   }
 
   send(type: string, payload?: any) {
@@ -68,6 +83,15 @@ class RealtimeWsClient {
     } catch {
       return false;
     }
+  }
+
+  private setConnected(value: boolean) {
+    this.connected = value;
+    this.statusHandlers.forEach((h) => {
+      try {
+        h(value);
+      } catch {}
+    });
   }
 
   private clearTimers() {
@@ -98,10 +122,10 @@ class RealtimeWsClient {
     }
 
     this.ws.onopen = () => {
-      this.connected = true;
+      this.setConnected(true);
       this.backoffMs = 1000;
       this.send('JOIN', { room: 'duo_chat' });
-      this.pingTimer = setInterval(() => this.send('PING', {}), 25000);
+      this.pingTimer = setInterval(() => this.send('PING', {}), 20000);
     };
 
     this.ws.onmessage = (ev) => {
@@ -118,12 +142,10 @@ class RealtimeWsClient {
       } catch {}
     };
 
-    this.ws.onerror = () => {
-      // onclose handles reconnect
-    };
+    this.ws.onerror = () => {};
 
     this.ws.onclose = () => {
-      this.connected = false;
+      this.setConnected(false);
       this.ws = null;
       if (this.pingTimer) {
         clearInterval(this.pingTimer);
@@ -137,7 +159,7 @@ class RealtimeWsClient {
     if (this.intentionalClose) return;
     if (this.reconnectTimer) return;
     const wait = this.backoffMs;
-    this.backoffMs = Math.min(this.backoffMs * 1.8, 20000);
+    this.backoffMs = Math.min(this.backoffMs * 1.6, 15000);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.open();

@@ -245,7 +245,7 @@ class CloudSyncService {
    */
   async pullState(
     user: string,
-    onRemoteUpdate: (data: SyncPayload | null, partnerData: any, meta?: { sharedNotes?: any[] }) => void
+    onRemoteUpdate: (data: SyncPayload | null, partnerData: any, meta?: { sharedNotes?: any[]; duoChat?: any[] }) => void
   ): Promise<void> {
     if (this.isSyncing) return;
     this.isSyncing = true;
@@ -292,12 +292,13 @@ class CloudSyncService {
           this.hasInitialPulledUsers[currentUserKey] = true;
 
           // ONLY trigger update if data actually changed, stopping infinite multi-tab re-renders!
-          if (userHasNew || partnerHasNew) {
+          if (userHasNew || partnerHasNew || (Array.isArray(result.duoChat) && result.duoChat.length > 0)) {
             const sharedNotes = Array.isArray(result.sharedNotes) ? result.sharedNotes : undefined;
+            const duoChat = Array.isArray(result.duoChat) ? result.duoChat : undefined;
             onRemoteUpdate(
               userHasNew ? result.data : null,
               partnerHasNew ? result.partner?.data : null,
-              { sharedNotes }
+              { sharedNotes, duoChat }
             );
           }
           return;
@@ -352,7 +353,7 @@ class CloudSyncService {
    */
   startAutoSync(
     getUser: () => string,
-    onRemoteUpdate: (data: SyncPayload | null, partnerData: any, meta?: { sharedNotes?: any[] }) => void
+    onRemoteUpdate: (data: SyncPayload | null, partnerData: any, meta?: { sharedNotes?: any[]; duoChat?: any[] }) => void
   ): () => void {
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
@@ -403,12 +404,14 @@ class CloudSyncService {
     };
   }
 
-  async pullDuoChat(): Promise<any[]> {
+  async pullDuoChat(since = 0): Promise<any[]> {
     try {
-      const res = await fetch(getChatEndpoint(), {
+      const url = since > 0 ? `${getChatEndpoint()}?since=${since}` : getChatEndpoint();
+      const res = await fetch(url, {
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(6000)
+        signal: AbortSignal.timeout(10000)
       });
+      if (res.status === 429) return [];
       if (!res.ok) return [];
       const json = await res.json();
       if (Array.isArray(json)) return json;
@@ -421,17 +424,55 @@ class CloudSyncService {
   }
 
   async pushDuoChat(msg: { id: string; sender: string; text: string; timestamp: string }): Promise<boolean> {
-    try {
-      const res = await fetch(getChatEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(msg),
-        signal: AbortSignal.timeout(6000)
-      });
-      return res.ok;
-    } catch {
-      return false;
+    const body = JSON.stringify(msg);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(getChatEndpoint(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          signal: AbortSignal.timeout(12000)
+        });
+        if (res.ok) return true;
+        if (res.status === 429) {
+          await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+          continue;
+        }
+      } catch {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+      }
     }
+    return false;
+  }
+
+  /** Merge chat arrays without losing messages (id + near-duplicate guard). */
+  mergeChatMessages(prev: any[], incoming: any[]): any[] {
+    const out = Array.isArray(prev) ? [...prev] : [];
+    const byId = new Set(out.map(m => m?.id).filter(Boolean));
+    const fingerprint = new Set(
+      out.map(m => `${String(m?.sender || '').toLowerCase()}|${String(m?.text || '').trim()}`)
+    );
+
+    for (const raw of incoming || []) {
+      if (!raw || !raw.text) continue;
+      const senderRaw = String(raw.sender || '');
+      const sender = senderRaw.toLowerCase().includes('ayush') ? 'Ayush' : 'Diwakar';
+      const id = raw.id || `pc_${raw.ts || Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      if (byId.has(id)) continue;
+      const fp = `${sender.toLowerCase()}|${String(raw.text).trim()}`;
+      // Skip near-duplicates from double-post (same text+sender already present)
+      if (fingerprint.has(fp) && !raw.id) continue;
+      byId.add(id);
+      fingerprint.add(fp);
+      out.push({
+        id,
+        sender,
+        text: String(raw.text).trim(),
+        timestamp: raw.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        ...(raw.ts ? { ts: raw.ts } : {})
+      });
+    }
+    return out;
   }
 
   /**
