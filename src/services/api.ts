@@ -145,7 +145,17 @@ class ApiClient {
 
   // 4. Partner Live Chat
   async getPartnerChat() {
-    return this.request<any[]>('/friends/chat');
+    const res = await this.request<any>('/friends/chat');
+    if (res.error) return { data: null, error: res.error };
+    const raw = res.data;
+    const messages = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.messages)
+        ? raw.messages
+        : Array.isArray(raw?.data)
+          ? raw.data
+          : [];
+    return { data: messages, error: null };
   }
 
   async sendPartnerChatMessage(payload: { sender: string; text: string }) {

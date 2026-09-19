@@ -975,7 +975,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const stopSync = cloudSync.startAutoSync(
       () => currentUser,
-      (remoteData, partnerData) => {
+      (remoteData, partnerData, meta) => {
         hasHydratedFromCloud.current = true;
         if (remoteData) {
           if (remoteData.profile) {
@@ -1020,7 +1020,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               remoteData.notes!.forEach((rn: any) => {
                 const idx = merged.findIndex(n => n.id === rn.id);
                 if (idx >= 0) {
-                  merged[idx] = { ...rn, pdfUrl: merged[idx].pdfUrl || rn.pdfUrl };
+                  merged[idx] = { ...rn, pdfUrl: merged[idx].pdfUrl || rn.pdfUrl, owner: rn.owner || merged[idx].owner };
                 } else {
                   merged.unshift(rn);
                 }
@@ -1028,6 +1028,29 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               try { localStorage.setItem('fusion_notes', JSON.stringify(merged)); } catch {}
               return merged;
             });
+          }
+          // Always fold in server sharedNotes + partner notes so both systems see each other
+          {
+            const shared = Array.isArray(meta?.sharedNotes) ? meta!.sharedNotes! : [];
+            const partnerNotes = Array.isArray(partnerData?.notes) ? partnerData.notes : [];
+            if (shared.length > 0 || partnerNotes.length > 0) {
+              setNotes(prev => {
+                const byId = new Map(prev.map(n => [n.id, n]));
+                [...partnerNotes, ...shared].forEach((rn: any) => {
+                  if (!rn?.id) return;
+                  const existing = byId.get(rn.id);
+                  byId.set(rn.id, {
+                    ...(existing || {}),
+                    ...rn,
+                    pdfUrl: existing?.pdfUrl || rn.pdfUrl,
+                    owner: rn.owner || existing?.owner
+                  });
+                });
+                const merged = Array.from(byId.values());
+                try { localStorage.setItem('fusion_notes', JSON.stringify(merged.map(n => ({ ...n, pdfUrl: undefined })))); } catch {}
+                return merged;
+              });
+            }
           }
           if (remoteData.timetableSchedule && Array.isArray(remoteData.timetableSchedule)) {
             setTimetableSchedule(remoteData.timetableSchedule);
@@ -1149,6 +1172,24 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               todayStudiedMinutes: partnerData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes
             }));
           }
+          if (Array.isArray(partnerData.notes) && partnerData.notes.length > 0) {
+            setNotes(prev => {
+              const byId = new Map(prev.map(n => [n.id, n]));
+              partnerData.notes.forEach((rn: any) => {
+                if (!rn?.id) return;
+                const existing = byId.get(rn.id);
+                byId.set(rn.id, {
+                  ...(existing || {}),
+                  ...rn,
+                  owner: rn.owner || (currentUser === 'Diwakar' ? 'ayush' : 'diwakar'),
+                  pdfUrl: existing?.pdfUrl || rn.pdfUrl
+                });
+              });
+              const merged = Array.from(byId.values());
+              try { localStorage.setItem('fusion_notes', JSON.stringify(merged.map(n => ({ ...n, pdfUrl: undefined })))); } catch {}
+              return merged;
+            });
+          }
           // Shared YouTube Playlists added by Partner
           if (Array.isArray(partnerData.courses) && partnerData.courses.length > 0) {
             setCourses(prev => {
@@ -1180,19 +1221,41 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     );
 
+    const chatTimer = setInterval(async () => {
+      const msgs = await cloudSync.pullDuoChat();
+      if (!msgs.length) return;
+      setPartnerChatMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const toAdd = msgs.filter((m: any) => m?.id && !existingIds.has(m.id));
+        if (!toAdd.length) return prev;
+        const merged = [...prev, ...toAdd];
+        try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+        return merged;
+      });
+    }, 4000);
+
     return () => {
       stopSync();
+      clearInterval(chatTimer);
     };
   }, [isAuthenticated, currentUser, playNotificationChime]);
 
-  // Push local updates to Cloud Sync API on state mutation
+  // Push local updates — own notes only (partner notes stay in partner blob)
   useEffect(() => {
     if (!isAuthenticated || !hasHydratedFromCloud.current) return;
+    const userKey = currentUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    const ownNotes = notes
+      .filter(n => {
+        const o = String((n as any).owner || userKey).toLowerCase();
+        return o === userKey || o === currentUser.toLowerCase();
+      })
+      .map(n => ({ ...n, owner: userKey, pdfUrl: undefined }));
+
     cloudSync.pushState(currentUser, {
       profile,
       dailyTasks,
       dsaTopics: dsaProblems,
-      notes,
+      notes: ownNotes,
       timetableSchedule,
       courses,
       deletedCourseIds,
@@ -1277,9 +1340,14 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setCurrentUser(user);
       localStorage.setItem('fusion_user', user);
 
+      try {
+        const res = await api.verifyEntryCode({ user, code: clean });
+        if (res.data?.token) api.setToken(res.data.token);
+      } catch {}
+
       // Hydrate directly from cloud so data is NEVER 0 on a different system or browser
       try {
-        const { data: remoteData } = await cloudSync.fetchStateDirect(user);
+        const { data: remoteData, partnerData, sharedNotes } = await cloudSync.fetchStateDirect(user);
         if (remoteData) {
           if (remoteData.profile) {
             const defProfile = user === 'Diwakar' ? DEFAULT_DIWAKAR_PROFILE : DEFAULT_AYUSH_PROFILE;
@@ -1311,9 +1379,20 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setDailyTasks(remoteData.dailyTasks);
             try { localStorage.setItem('fusion_daily_tasks', JSON.stringify(remoteData.dailyTasks)); } catch {}
           }
-          if (Array.isArray(remoteData.notes)) {
-            setNotes(remoteData.notes);
-            try { localStorage.setItem('fusion_notes', JSON.stringify(remoteData.notes)); } catch {}
+          {
+            const own = Array.isArray(remoteData.notes) ? remoteData.notes : [];
+            const partner = Array.isArray(partnerData?.notes) ? partnerData.notes : [];
+            const shared = Array.isArray(sharedNotes) ? sharedNotes : [];
+            const byId = new Map<string, any>();
+            [...own, ...partner, ...shared].forEach((n: any) => {
+              if (!n?.id) return;
+              byId.set(n.id, { ...(byId.get(n.id) || {}), ...n });
+            });
+            const mergedNotes = Array.from(byId.values());
+            if (mergedNotes.length > 0) {
+              setNotes(mergedNotes);
+              try { localStorage.setItem('fusion_notes', JSON.stringify(mergedNotes.map((n: any) => ({ ...n, pdfUrl: undefined })))); } catch {}
+            }
           }
           if (Array.isArray(remoteData.studyLogs)) {
             setStudySessions(remoteData.studyLogs);
@@ -1335,10 +1414,27 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setYoutubeApiKeyState(remoteData.youtubeApiKey);
             YouTubeService.setApiKey(user, remoteData.youtubeApiKey);
           }
+          if (Array.isArray(remoteData.partnerChatMessages) && remoteData.partnerChatMessages.length > 0) {
+            setPartnerChatMessages(remoteData.partnerChatMessages);
+            try { localStorage.setItem('fusion_partner_chat', JSON.stringify(remoteData.partnerChatMessages)); } catch {}
+          }
         }
       } catch (e) {
         console.warn('[Direct Login Cloud Hydration Failed, using local cache]', e);
       }
+
+      // Also pull shared duo chat
+      try {
+        const msgs = await cloudSync.pullDuoChat();
+        if (msgs.length) {
+          setPartnerChatMessages(prev => {
+            const ids = new Set(prev.map(m => m.id));
+            const merged = [...prev, ...msgs.filter((m: any) => m?.id && !ids.has(m.id))];
+            try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+            return merged;
+          });
+        }
+      } catch {}
 
       hasHydratedFromCloud.current = true;
       setIsAuthenticated(true);
@@ -1794,6 +1890,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const addNote = (note: { title: string; content: string; tags: string[]; pdfUrl?: string; fileName?: string; fileSize?: string }) => {
     const noteId = 'n_' + Date.now();
     const hasPdf = Boolean(note.pdfUrl);
+    const userKey = currentUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
 
     if (hasPdf && note.pdfUrl) {
       savePdfToIndexedDb(noteId, {
@@ -1807,20 +1904,25 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ...note,
       id: noteId,
       hasPdf,
+      owner: userKey,
       createdAt: 'Just now'
     };
 
     setNotes(prev => {
       const updated = [newNote, ...prev.filter(n => n.id !== newNote.id)];
       try {
-        // Strip heavy base64 strings before saving to localStorage to prevent quota exhaustion
         const cleanForStorage = updated.map(n => ({
           ...n,
           pdfUrl: undefined
         }));
         localStorage.setItem('fusion_notes', JSON.stringify(cleanForStorage));
-        // Immediately push to cloud so Android can see new note
-        cloudSync.pushState(currentUser, { notes: cleanForStorage }).catch(e => console.warn('[CloudSync] addNote push error', e));
+        const ownNotes = updated
+          .filter(n => {
+            const o = String((n as any).owner || userKey).toLowerCase();
+            return o === userKey || o === currentUser.toLowerCase();
+          })
+          .map(n => ({ ...n, owner: userKey, pdfUrl: undefined }));
+        cloudSync.pushStateDirect(currentUser, { notes: ownNotes }).catch(e => console.warn('[CloudSync] addNote push error', e));
       } catch (e) {
         console.warn('[Note Storage Quota Warning]', e);
       }
@@ -1836,6 +1938,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const deleteNote = (id: string) => {
     deletePdfFromIndexedDb(id);
+    const userKey = currentUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
     setNotes(prev => {
       const updated = prev.filter(n => n.id !== id);
       try {
@@ -1844,8 +1947,16 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           pdfUrl: undefined
         }));
         localStorage.setItem('fusion_notes', JSON.stringify(cleanForStorage));
-        // Immediately push to cloud so Android reflects deletion
-        cloudSync.pushState(currentUser, { notes: cleanForStorage }).catch(e => console.warn('[CloudSync] deleteNote push error', e));
+        const ownNotes = updated
+          .filter(n => {
+            const o = String((n as any).owner || userKey).toLowerCase();
+            return o === userKey || o === currentUser.toLowerCase();
+          })
+          .map(n => ({ ...n, owner: userKey, pdfUrl: undefined }));
+        cloudSync.pushStateDirect(currentUser, {
+          notes: ownNotes,
+          deletedNoteIds: [id]
+        } as any).catch(e => console.warn('[CloudSync] deleteNote push error', e));
       } catch {}
       return updated;
     });
@@ -2197,7 +2308,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
   };
 
-  // Partner Live Chat (Syncs across Web & Android App)
+  // Partner Live Chat (shared duo store + sync blob)
   const sendPartnerChatMessage = (text: string) => {
     if (!text.trim()) return;
     const msg = {
@@ -2210,26 +2321,14 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const next = [...prev, msg];
       try { localStorage.setItem('fusion_partner_chat', JSON.stringify(next)); } catch {}
       cloudSync.pushState(currentUser, {
-        profile,
-        dailyTasks,
-        dsaTopics: dsaProblems,
-        notes,
-        timetableSchedule,
-        courses,
-        pdfQuestionSheets,
-        habits,
-        goals,
-        mlMilestones,
-        geminiApiKey: geminiApiKey || undefined,
-        youtubeApiKey: youtubeApiKey || undefined,
-        studyLogs: studySessions,
         partnerChatMessages: next,
-        isVacationPaused,
-        hasWatchedPlaylistVideoToday,
         updatedAt: Date.now()
       });
       return next;
     });
+
+    cloudSync.pushDuoChat(msg).catch(() => {});
+    api.sendPartnerChatMessage({ sender: currentUser, text: msg.text }).catch(() => {});
 
     if (broadcastChannel) {
       broadcastChannel.postMessage({

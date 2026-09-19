@@ -255,4 +255,5 @@ export interface StudentNote {
   fileName?: string;
   fileSize?: string;
   hasPdf?: boolean;
+  owner?: string;
 }

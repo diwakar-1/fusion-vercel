@@ -13,10 +13,17 @@ const CLOUD_DOC_IDS: Record<string, string> = {
 
 // Single production backend — Web + Android share state in real-time
 const RENDER_SYNC = 'https://fussion-api.onrender.com/api/v1/sync';
+const RENDER_CHAT = 'https://fussion-api.onrender.com/api/v1/friends/chat';
 
 const getSyncEndpoint = (): string => {
   const fromEnv = (import.meta as any).env?.VITE_SYNC_URL as string | undefined;
   return (fromEnv && fromEnv.trim()) || RENDER_SYNC;
+};
+
+const getChatEndpoint = (): string => {
+  const fromEnv = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
+  if (fromEnv && fromEnv.trim()) return `${fromEnv.replace(/\/$/, '')}/friends/chat`;
+  return RENDER_CHAT;
 };
 
 export interface SyncPayload {
@@ -42,7 +49,25 @@ export interface SyncPayload {
   isVacationPaused?: boolean;
   hasWatchedPlaylistVideoToday?: boolean;
   ayushPassword?: string;
+  deletedNoteIds?: string[];
   updatedAt: number;
+}
+
+const ARRAY_KEYS = new Set([
+  'notes', 'dailyTasks', 'dsaTopics', 'courses', 'pdfQuestionSheets',
+  'habits', 'goals', 'mlMilestones', 'aiChatMessages', 'studyLogs',
+  'completedProblemIds', 'partnerChatMessages', 'deletedCourseIds', 'deletedNoteIds'
+]);
+
+function sanitizePushPayload(payload: Partial<SyncPayload>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(payload || {})) {
+    if (value === undefined || value === null) continue;
+    if (ARRAY_KEYS.has(key) && Array.isArray(value) && value.length === 0) continue;
+    if ((key === 'geminiApiKey' || key === 'youtubeApiKey') && !String(value).trim()) continue;
+    out[key] = value;
+  }
+  return out;
 }
 
 class CloudSyncService {
@@ -57,7 +82,7 @@ class CloudSyncService {
   /**
    * Direct fetch user and partner state from cloud (used during login to guarantee immediate hydration)
    */
-  async fetchStateDirect(user: string): Promise<{ data: SyncPayload | null; partnerData: any }> {
+  async fetchStateDirect(user: string): Promise<{ data: SyncPayload | null; partnerData: any; sharedNotes?: any[] }> {
     const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
     const partnerUserKey = currentUserKey === 'diwakar' ? 'ayush' : 'diwakar';
 
@@ -78,7 +103,11 @@ class CloudSyncService {
           }
           this.hasInitialPulledUsers[currentUserKey] = true;
           try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
-          return { data: result.data, partnerData: result.partner?.data || null };
+          return {
+            data: result.data,
+            partnerData: result.partner?.data || null,
+            sharedNotes: Array.isArray(result.sharedNotes) ? result.sharedNotes : []
+          };
         }
       }
     } catch {
@@ -147,12 +176,12 @@ class CloudSyncService {
     const storedGeminiKey = localStorage.getItem(`fusion_gemini_api_key_${currentUserKey}`) || undefined;
     const storedYtKey = localStorage.getItem(`fusion_yt_api_key_${currentUserKey}`) || undefined;
 
-    const payloadToPush = {
+    const payloadToPush = sanitizePushPayload({
       ...payload,
       geminiApiKey: payload?.geminiApiKey || storedGeminiKey,
       youtubeApiKey: payload?.youtubeApiKey || storedYtKey,
       updatedAt: now
-    };
+    });
 
     try {
       // 1. Try primary API endpoint
@@ -211,7 +240,7 @@ class CloudSyncService {
    */
   async pullState(
     user: string,
-    onRemoteUpdate: (data: SyncPayload | null, partnerData: any) => void
+    onRemoteUpdate: (data: SyncPayload | null, partnerData: any, meta?: { sharedNotes?: any[] }) => void
   ): Promise<void> {
     if (this.isSyncing) return;
     this.isSyncing = true;
@@ -259,7 +288,12 @@ class CloudSyncService {
 
           // ONLY trigger update if data actually changed, stopping infinite multi-tab re-renders!
           if (userHasNew || partnerHasNew) {
-            onRemoteUpdate(userHasNew ? result.data : null, partnerHasNew ? result.partner.data : null);
+            const sharedNotes = Array.isArray(result.sharedNotes) ? result.sharedNotes : undefined;
+            onRemoteUpdate(
+              userHasNew ? result.data : null,
+              partnerHasNew ? result.partner?.data : null,
+              { sharedNotes }
+            );
           }
           return;
         }
@@ -313,7 +347,7 @@ class CloudSyncService {
    */
   startAutoSync(
     getUser: () => string,
-    onRemoteUpdate: (data: SyncPayload | null, partnerData: any) => void
+    onRemoteUpdate: (data: SyncPayload | null, partnerData: any, meta?: { sharedNotes?: any[] }) => void
   ): () => void {
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
@@ -362,6 +396,37 @@ class CloudSyncService {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
+  }
+
+  async pullDuoChat(): Promise<any[]> {
+    try {
+      const res = await fetch(getChatEndpoint(), {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      if (Array.isArray(json)) return json;
+      if (Array.isArray(json?.messages)) return json.messages;
+      if (Array.isArray(json?.data)) return json.data;
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  async pushDuoChat(msg: { id: string; sender: string; text: string; timestamp: string }): Promise<boolean> {
+    try {
+      const res = await fetch(getChatEndpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msg),
+        signal: AbortSignal.timeout(6000)
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
   }
 
   /**
