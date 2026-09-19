@@ -11,18 +11,23 @@ const CLOUD_DOC_IDS: Record<string, string> = {
   ayush: 'ff808181a09d98f701a0a8863d2016cd'
 };
 
-// Single production backend — Web + Android share state in real-time
+// Single production backend ONLY — never localhost / alternate hosts
 const RENDER_SYNC = 'https://fussion-api.onrender.com/api/v1/sync';
 const RENDER_CHAT = 'https://fussion-api.onrender.com/api/v1/friends/chat';
 
 const getSyncEndpoint = (): string => {
   const fromEnv = (import.meta as any).env?.VITE_SYNC_URL as string | undefined;
-  return (fromEnv && fromEnv.trim()) || RENDER_SYNC;
+  const url = (fromEnv && fromEnv.trim()) || RENDER_SYNC;
+  // Hard lock: if env points elsewhere, still use Render
+  if (!url.includes('fussion-api.onrender.com')) return RENDER_SYNC;
+  return url;
 };
 
 const getChatEndpoint = (): string => {
   const fromEnv = (import.meta as any).env?.VITE_API_BASE_URL as string | undefined;
-  if (fromEnv && fromEnv.trim()) return `${fromEnv.replace(/\/$/, '')}/friends/chat`;
+  if (fromEnv && fromEnv.trim() && fromEnv.includes('fussion-api.onrender.com')) {
+    return `${fromEnv.replace(/\/$/, '')}/friends/chat`;
+  }
   return RENDER_CHAT;
 };
 

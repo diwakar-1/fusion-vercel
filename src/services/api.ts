@@ -1,15 +1,13 @@
 /**
  * FUSION API Client
- * Web + Android both talk to the same production backend.
+ * Web + Android both talk ONLY to the production Render backend.
  */
 
 const RENDER_API = 'https://fussion-api.onrender.com/api/v1';
 
+const fromEnv = ((import.meta as any).env?.VITE_API_BASE_URL as string | undefined)?.trim();
 const API_BASE =
-  ((import.meta as any).env?.VITE_API_BASE_URL as string | undefined)?.trim() ||
-  (typeof window !== 'undefined' && window.location.hostname === 'localhost'
-    ? '/api/v1'
-    : RENDER_API);
+  fromEnv && fromEnv.includes('fussion-api.onrender.com') ? fromEnv : RENDER_API;
 
 class ApiClient {
   private token: string | null = null;
@@ -158,7 +156,12 @@ class ApiClient {
     return { data: messages, error: null };
   }
 
-  async sendPartnerChatMessage(payload: { sender: string; text: string }) {
+  async sendPartnerChatMessage(payload: {
+    id?: string;
+    sender: string;
+    text: string;
+    timestamp?: string;
+  }) {
     return this.request<any>('/friends/chat', {
       method: 'POST',
       body: JSON.stringify(payload)

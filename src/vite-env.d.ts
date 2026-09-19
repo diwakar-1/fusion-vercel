@@ -2,6 +2,9 @@
 
 interface ImportMetaEnv {
   readonly VITE_DIWAKAR_CODE: string;
+  readonly VITE_API_BASE_URL?: string;
+  readonly VITE_SYNC_URL?: string;
+  readonly VITE_WS_URL?: string;
 }
 
 interface ImportMeta {

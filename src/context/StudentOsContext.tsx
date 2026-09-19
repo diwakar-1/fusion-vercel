@@ -5,6 +5,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { StatusBar, Style as StatusBarStyle } from '@capacitor/status-bar';
 import { api } from '../services/api';
 import { cloudSync } from '../services/cloudSync';
+import { realtimeWs } from '../services/realtimeWs';
 import { GeminiService } from '../services/gemini';
 import { YouTubeService } from '../services/youtube';
 import { savePdfToIndexedDb, deletePdfFromIndexedDb } from '../services/pdfStorage';
@@ -875,7 +876,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           currentlyWatching: payload
         }));
       } else if (type === 'PARTNER_CHAT_MESSAGE') {
-        setPartnerChatMessages(prev => [...prev, payload]);
+        if (!payload?.id) return;
+        setPartnerChatMessages(prev => {
+          if (prev.some(m => m.id === payload.id)) return prev;
+          const next = [...prev, payload];
+          try { localStorage.setItem('fusion_partner_chat', JSON.stringify(next)); } catch {}
+          return next;
+        });
       } else if (type === 'PARTNER_NUDGE') {
         confetti({ particleCount: 70, spread: 80, origin: { y: 0.5 } });
       } else if (type === 'PARTNER_TASK_TOGGLE') {
@@ -1232,13 +1239,50 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
         return merged;
       });
-    }, 4000);
+    }, 8000);
 
     return () => {
       stopSync();
       clearInterval(chatTimer);
     };
   }, [isAuthenticated, currentUser, playNotificationChime]);
+
+  // Realtime WebSocket — instant duo chat (Render /ws)
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) {
+      realtimeWs.disconnect();
+      return;
+    }
+
+    realtimeWs.connect(currentUser);
+
+    const unsub = realtimeWs.subscribe((event) => {
+      const type = String(event?.type || '').toUpperCase();
+      if (type !== 'PARTNER_CHAT_MESSAGE') return;
+      const payload = event.payload;
+      if (!payload?.id || !payload?.text) return;
+      setPartnerChatMessages(prev => {
+        if (prev.some(m => m.id === payload.id)) return prev;
+        const next = [
+          ...prev,
+          {
+            id: payload.id,
+            sender: payload.sender,
+            text: payload.text,
+            timestamp: payload.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ];
+        try { localStorage.setItem('fusion_partner_chat', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setIsBackendConnected(true);
+    });
+
+    return () => {
+      unsub();
+      realtimeWs.disconnect();
+    };
+  }, [isAuthenticated, currentUser]);
 
   // Push local updates — own notes only (partner notes stay in partner blob)
   useEffect(() => {
@@ -2308,11 +2352,11 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
   };
 
-  // Partner Live Chat (shared duo store + sync blob)
+  // Partner Live Chat (shared duo store + WebSocket push)
   const sendPartnerChatMessage = (text: string) => {
     if (!text.trim()) return;
     const msg = {
-      id: 'pc_' + Date.now(),
+      id: 'pc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       sender: currentUser,
       text: text.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -2327,8 +2371,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return next;
     });
 
+    // Single POST — backend persists + broadcasts over /ws
     cloudSync.pushDuoChat(msg).catch(() => {});
-    api.sendPartnerChatMessage({ sender: currentUser, text: msg.text }).catch(() => {});
 
     if (broadcastChannel) {
       broadcastChannel.postMessage({
@@ -2561,7 +2605,14 @@ INSTRUCTIONS:
           localStorage.setItem('fusion_dsa_sessions', JSON.stringify(res.data.dsaSessions));
         }
         if (Array.isArray(res.data.partnerChat)) {
-          setPartnerChatMessages(res.data.partnerChat);
+          setPartnerChatMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const toAdd = res.data!.partnerChat.filter((m: any) => m?.id && !existingIds.has(m.id));
+            if (!toAdd.length) return prev;
+            const merged = [...prev, ...toAdd];
+            try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
+            return merged;
+          });
         }
         const payload = res.data;
         if (Array.isArray(payload.courses) && payload.courses.length > 0) {
