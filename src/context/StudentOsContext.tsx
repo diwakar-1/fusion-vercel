@@ -346,6 +346,49 @@ const mergePlaylists = (existing: VideoCourse[], deletedIds: string[] = [], ...l
   return Array.from(map.values());
 };
 
+// Shared Notes Merger with Tombstone Deletion Support
+const mergeNotes = (existing: StudentNote[], deletedIds: string[] = [], ...lists: (StudentNote[] | undefined)[]): StudentNote[] => {
+  const map = new Map<string, StudentNote>();
+  const deletedSet = new Set(deletedIds);
+
+  const isDeleted = (n: any) => {
+    if (!n || !n.id) return true;
+    if (deletedSet.has(n.id)) return true;
+    return false;
+  };
+
+  if (Array.isArray(existing)) {
+    existing.forEach(n => {
+      if (!isDeleted(n)) {
+        map.set(n.id, n);
+      }
+    });
+  }
+
+  lists.forEach(list => {
+    if (Array.isArray(list)) {
+      list.forEach(n => {
+        if (!isDeleted(n)) {
+          if (!map.has(n.id)) {
+            map.set(n.id, n);
+          } else {
+            const prev = map.get(n.id)!;
+            map.set(n.id, {
+              ...prev,
+              ...n,
+              pdfUrl: n.pdfUrl || prev.pdfUrl,
+              owner: n.owner || prev.owner,
+              uploadedBy: n.uploadedBy || prev.uploadedBy
+            });
+          }
+        }
+      });
+    }
+  });
+
+  return Array.from(map.values());
+};
+
 export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Navigation
   const [activeModule, setActiveModule] = useState<string>('dashboard');
@@ -602,6 +645,16 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   });
 
+  // Deleted Notes Tombstone List (guarantees deleted notes never return)
+  const [deletedNoteIds, setDeletedNoteIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('fusion_deleted_note_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   // Daily tasks & Habits (Clean start without tough default tasks)
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>(() => {
     const saved = localStorage.getItem('fusion_daily_tasks');
@@ -644,6 +697,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const DEFAULT_INITIAL_NOTES: StudentNote[] = [];
 
   const [notes, setNotes] = useState<StudentNote[]>(() => {
+    let delSet = new Set<string>();
+    try {
+      const savedDel = localStorage.getItem('fusion_deleted_note_ids');
+      if (savedDel) delSet = new Set(JSON.parse(savedDel));
+    } catch {}
+
     const saved = localStorage.getItem('fusion_notes');
     if (saved) {
       try {
@@ -651,6 +710,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (Array.isArray(parsed)) {
           return parsed.filter(
             (n: any) =>
+              !delSet.has(n.id) &&
               n.id !== 'n1' &&
               n.id !== 'n2' &&
               !n.title?.toLowerCase().includes('kahn') &&
@@ -990,6 +1050,25 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } else if (type === 'PARTNER_COURSE_DELETE') {
         setCourses(prev => prev.filter(c => c.id !== payload.courseId));
         setDeletedCourseIds(prev => Array.from(new Set([...prev, payload.courseId])));
+      } else if (type === 'PARTNER_NOTE_DELETE') {
+        if (payload?.noteId) {
+          deletePdfFromIndexedDb(payload.noteId);
+          setNotes(prev => {
+            const next = prev.filter(n => n.id !== payload.noteId);
+            try {
+              localStorage.setItem('fusion_notes', JSON.stringify(next.map(n => ({
+                ...n,
+                pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+              }))));
+            } catch {}
+            return next;
+          });
+          setDeletedNoteIds(prev => {
+            const next = Array.from(new Set([...prev, payload.noteId]));
+            try { localStorage.setItem('fusion_deleted_note_ids', JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }
       } else if (type === 'PARTNER_QUESTION_SOLVED') {
         if (payload.question) {
           setPdfQuestionSheets(prev => {
@@ -1149,44 +1228,43 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setDailyTasks(remoteData.dailyTasks);
             try { localStorage.setItem('fusion_daily_tasks', JSON.stringify(remoteData.dailyTasks)); } catch {}
           }
-          if (Array.isArray(remoteData.notes) && remoteData.notes.length > 0) {
-            // Merge remote notes into local instead of blindly overwriting
-            setNotes(prev => {
-              const merged = [...prev];
-              remoteData.notes!.forEach((rn: any) => {
-                const idx = merged.findIndex(n => n.id === rn.id);
-                if (idx >= 0) {
-                  merged[idx] = { ...rn, pdfUrl: merged[idx].pdfUrl || rn.pdfUrl, owner: rn.owner || merged[idx].owner };
-                } else {
-                  merged.unshift(rn);
-                }
-              });
-              try { localStorage.setItem('fusion_notes', JSON.stringify(merged)); } catch {}
+          // Sync deletedNoteIds tombstone list
+          const remoteDelNotes = [
+            ...(Array.isArray(remoteData.deletedNoteIds) ? remoteData.deletedNoteIds : []),
+            ...(Array.isArray(partnerData?.deletedNoteIds) ? partnerData.deletedNoteIds : [])
+          ];
+          if (remoteDelNotes.length > 0) {
+            setDeletedNoteIds(prev => {
+              const merged = Array.from(new Set([...prev, ...remoteDelNotes]));
+              try { localStorage.setItem('fusion_deleted_note_ids', JSON.stringify(merged)); } catch {}
               return merged;
             });
           }
-          // Always fold in server sharedNotes + partner notes so both systems see each other
-          {
-            const shared = Array.isArray(meta?.sharedNotes) ? meta!.sharedNotes! : [];
-            const partnerNotes = Array.isArray(partnerData?.notes) ? partnerData.notes : [];
-            if (shared.length > 0 || partnerNotes.length > 0) {
-              setNotes(prev => {
-                const byId = new Map(prev.map(n => [n.id, n]));
-                [...partnerNotes, ...shared].forEach((rn: any) => {
-                  if (!rn?.id) return;
-                  const existing = byId.get(rn.id);
-                  byId.set(rn.id, {
-                    ...(existing || {}),
-                    ...rn,
-                    pdfUrl: existing?.pdfUrl || rn.pdfUrl,
-                    owner: rn.owner || existing?.owner
-                  });
-                });
-                const merged = Array.from(byId.values());
-                try { localStorage.setItem('fusion_notes', JSON.stringify(merged.map(n => ({ ...n, pdfUrl: undefined })))); } catch {}
-                return merged;
-              });
-            }
+
+          let curDelNotes = new Set<string>();
+          try {
+            const saved = localStorage.getItem('fusion_deleted_note_ids');
+            if (saved) curDelNotes = new Set(JSON.parse(saved));
+          } catch {}
+          deletedNoteIds.forEach(id => curDelNotes.add(id));
+          remoteDelNotes.forEach(id => curDelNotes.add(id));
+
+          const allPartnerNotes = Array.isArray(partnerData?.notes) ? partnerData.notes : [];
+          const allRemoteNotes = Array.isArray(remoteData?.notes) ? remoteData.notes : [];
+          const allSharedNotes = Array.isArray(meta?.sharedNotes) ? meta!.sharedNotes! : [];
+
+          if (allRemoteNotes.length > 0 || allPartnerNotes.length > 0 || allSharedNotes.length > 0 || curDelNotes.size > 0) {
+            setNotes(prev => {
+              const activeDeleted = Array.from(curDelNotes);
+              const merged = mergeNotes(prev, activeDeleted, allRemoteNotes, allPartnerNotes, allSharedNotes);
+              try {
+                localStorage.setItem('fusion_notes', JSON.stringify(merged.map(n => ({
+                  ...n,
+                  pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+                }))));
+              } catch {}
+              return merged;
+            });
           }
           if (remoteData.timetableSchedule && Array.isArray(remoteData.timetableSchedule)) {
             setTimetableSchedule(remoteData.timetableSchedule);
@@ -1320,21 +1398,30 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               return updated;
             });
           }
+          if (Array.isArray(partnerData.deletedNoteIds) && partnerData.deletedNoteIds.length > 0) {
+            setDeletedNoteIds(prev => {
+              const merged = Array.from(new Set([...prev, ...partnerData.deletedNoteIds]));
+              try { localStorage.setItem('fusion_deleted_note_ids', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
+          }
           if (Array.isArray(partnerData.notes) && partnerData.notes.length > 0) {
             setNotes(prev => {
-              const byId = new Map(prev.map(n => [n.id, n]));
-              partnerData.notes.forEach((rn: any) => {
-                if (!rn?.id) return;
-                const existing = byId.get(rn.id);
-                byId.set(rn.id, {
-                  ...(existing || {}),
-                  ...rn,
-                  owner: rn.owner || (currentUser === 'Diwakar' ? 'ayush' : 'diwakar'),
-                  uploadedBy: rn.uploadedBy || (currentUser === 'Diwakar' ? 'Ayush' : 'Diwakar'),
-                  pdfUrl: rn.pdfUrl || existing?.pdfUrl
-                });
-              });
-              const merged = Array.from(byId.values());
+              let curDel = new Set<string>();
+              try {
+                const saved = localStorage.getItem('fusion_deleted_note_ids');
+                if (saved) curDel = new Set(JSON.parse(saved));
+              } catch {}
+              deletedNoteIds.forEach(id => curDel.add(id));
+              if (Array.isArray(partnerData.deletedNoteIds)) {
+                partnerData.deletedNoteIds.forEach((id: string) => curDel.add(id));
+              }
+              const partnerNotesWithOwner = partnerData.notes.map((rn: any) => ({
+                ...rn,
+                owner: rn.owner || (currentUser === 'Diwakar' ? 'ayush' : 'diwakar'),
+                uploadedBy: rn.uploadedBy || (currentUser === 'Diwakar' ? 'Ayush' : 'Diwakar')
+              }));
+              const merged = mergeNotes(prev, Array.from(curDel), partnerNotesWithOwner);
               try {
                 localStorage.setItem('fusion_notes', JSON.stringify(merged.map(n => ({
                   ...n,
@@ -1455,9 +1542,36 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         return;
       }
 
+      const isNoteDelete =
+        type === 'PARTNER_NOTE_DELETE' ||
+        (type === 'PARTNER_CHAT_MESSAGE' && (event.payload?.isSystemNoteDelete || event.payload?.text === '__NOTE_DELETE__'));
+
+      if (isNoteDelete) {
+        const noteId = event.payload?.noteId;
+        if (noteId) {
+          deletePdfFromIndexedDb(noteId);
+          setNotes(prev => {
+            const next = prev.filter(n => n.id !== noteId);
+            try {
+              localStorage.setItem('fusion_notes', JSON.stringify(next.map(n => ({
+                ...n,
+                pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+              }))));
+            } catch {}
+            return next;
+          });
+          setDeletedNoteIds(prev => {
+            const next = Array.from(new Set([...prev, noteId]));
+            try { localStorage.setItem('fusion_deleted_note_ids', JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }
+        return;
+      }
+
       if (type !== 'PARTNER_CHAT_MESSAGE') return;
       const payload = event.payload;
-      if (!payload?.text || payload.isSystemProfileUpdate || payload.text === '__PROFILE_UPDATE__') return;
+      if (!payload?.text || payload.isSystemProfileUpdate || payload.text === '__PROFILE_UPDATE__' || payload.isSystemNoteDelete || payload.text === '__NOTE_DELETE__') return;
       setPartnerChatMessages(prev => {
         const merged = cloudSync.mergeChatMessages(prev, [payload]);
         if (merged.length === prev.length) return prev;
@@ -1496,6 +1610,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       timetableSchedule,
       courses,
       deletedCourseIds,
+      deletedNoteIds,
       pdfQuestionSheets,
       habits,
       goals,
@@ -1520,6 +1635,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     studySessions,
     courses,
     deletedCourseIds,
+    deletedNoteIds,
     pdfQuestionSheets,
     habits,
     goals,
@@ -1614,25 +1730,41 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setDailyTasks(remoteData.dailyTasks);
             try { localStorage.setItem('fusion_daily_tasks', JSON.stringify(remoteData.dailyTasks)); } catch {}
           }
+          if (Array.isArray(remoteData.deletedNoteIds)) {
+            setDeletedNoteIds(prev => {
+              const merged = Array.from(new Set([...prev, ...(remoteData.deletedNoteIds || [])]));
+              try { localStorage.setItem('fusion_deleted_note_ids', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
+          }
+          if (Array.isArray(partnerData?.deletedNoteIds)) {
+            setDeletedNoteIds(prev => {
+              const merged = Array.from(new Set([...prev, ...(partnerData.deletedNoteIds || [])]));
+              try { localStorage.setItem('fusion_deleted_note_ids', JSON.stringify(merged)); } catch {}
+              return merged;
+            });
+          }
           {
+            let delNoteSet = new Set<string>();
+            try {
+              const saved = localStorage.getItem('fusion_deleted_note_ids');
+              if (saved) delNoteSet = new Set(JSON.parse(saved));
+            } catch {}
+            deletedNoteIds.forEach(id => delNoteSet.add(id));
+            if (Array.isArray(remoteData.deletedNoteIds)) remoteData.deletedNoteIds.forEach((id: string) => delNoteSet.add(id));
+            if (Array.isArray(partnerData?.deletedNoteIds)) partnerData.deletedNoteIds.forEach((id: string) => delNoteSet.add(id));
+
             const own = Array.isArray(remoteData.notes) ? remoteData.notes : [];
             const partner = Array.isArray(partnerData?.notes) ? partnerData.notes : [];
             const shared = Array.isArray(sharedNotes) ? sharedNotes : [];
-            const byId = new Map<string, any>();
-            [...own, ...partner, ...shared].forEach((n: any) => {
-              if (!n?.id) return;
-              byId.set(n.id, { ...(byId.get(n.id) || {}), ...n });
-            });
-            const mergedNotes = Array.from(byId.values());
-            if (mergedNotes.length > 0) {
-              setNotes(mergedNotes);
-              try {
-                localStorage.setItem('fusion_notes', JSON.stringify(mergedNotes.map((n: any) => ({
-                  ...n,
-                  pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
-                }))));
-              } catch {}
-            }
+            const mergedNotes = mergeNotes([], Array.from(delNoteSet), own, partner, shared);
+            setNotes(mergedNotes);
+            try {
+              localStorage.setItem('fusion_notes', JSON.stringify(mergedNotes.map((n: any) => ({
+                ...n,
+                pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+              }))));
+            } catch {}
           }
           if (partnerData?.profile) {
             const pp = partnerData.profile;
@@ -2272,6 +2404,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       createdAt: 'Just now'
     };
 
+    setDeletedNoteIds(prev => {
+      if (!prev.includes(noteId)) return prev;
+      const filtered = prev.filter(id => id !== noteId);
+      try { localStorage.setItem('fusion_deleted_note_ids', JSON.stringify(filtered)); } catch {}
+      return filtered;
+    });
+
     setNotes(prev => {
       const updated = [newNote, ...prev.filter(n => n.id !== newNote.id)];
       try {
@@ -2292,7 +2431,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             uploadedBy: n.uploadedBy || (userKey === 'ayush' ? 'Ayush' : 'Diwakar'),
             pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
           }));
-        cloudSync.pushStateDirect(currentUser, { notes: ownNotes }).catch(e => console.warn('[CloudSync] addNote push error', e));
+        cloudSync.pushStateDirect(currentUser, { notes: ownNotes, deletedNoteIds }).catch(e => console.warn('[CloudSync] addNote push error', e));
       } catch (e) {
         console.warn('[Note Storage Quota Warning]', e);
       }
@@ -2309,6 +2448,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const deleteNote = (id: string) => {
     deletePdfFromIndexedDb(id);
     const userKey = currentUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+
+    const nextDeleted = Array.from(new Set([...deletedNoteIds, id]));
+    setDeletedNoteIds(nextDeleted);
+    try {
+      localStorage.setItem('fusion_deleted_note_ids', JSON.stringify(nextDeleted));
+    } catch {}
+
     setNotes(prev => {
       const updated = prev.filter(n => n.id !== id);
       try {
@@ -2330,12 +2476,31 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }));
         cloudSync.pushStateDirect(currentUser, {
           notes: ownNotes,
-          deletedNoteIds: [id]
+          deletedNoteIds: nextDeleted
         } as any).catch(e => console.warn('[CloudSync] deleteNote push error', e));
       } catch {}
       return updated;
     });
-    api.deleteNote(id);
+
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({
+        type: 'PARTNER_NOTE_DELETE',
+        sender: currentUser,
+        payload: { noteId: id }
+      });
+    }
+
+    if (realtimeWs.isConnected()) {
+      realtimeWs.send('PARTNER_NOTE_DELETE', { noteId: id });
+      realtimeWs.send('PARTNER_CHAT_MESSAGE', {
+        room: 'duo_chat',
+        isSystemNoteDelete: true,
+        noteId: id,
+        text: '__NOTE_DELETE__'
+      });
+    }
+
+    api.deleteNote(id).catch(e => console.warn('api deleteNote error', e));
   };
 
   // PDF Question Sheets & AI Generation (Always unified into one master checklist)
@@ -2966,25 +3131,18 @@ INSTRUCTIONS:
         }
         if (Array.isArray(payload.notes) && payload.notes.length > 0) {
           setNotes(prev => {
-            const merged = [...prev];
-            payload.notes.forEach((bn: any) => {
-              const existingIdx = merged.findIndex(n => n.id === bn.id);
-              if (existingIdx >= 0) {
-                const existing = merged[existingIdx];
-                merged[existingIdx] = {
-                  ...bn,
-                  tags: Array.isArray(bn.tags) && bn.tags.length > 0 ? bn.tags : (existing.tags || ['General']),
-                  pdfUrl: bn.pdfUrl || existing.pdfUrl,
-                  fileName: bn.fileName || existing.fileName,
-                  fileSize: bn.fileSize || existing.fileSize
-                };
-              } else {
-                merged.push({
-                  ...bn,
-                  tags: Array.isArray(bn.tags) && bn.tags.length > 0 ? bn.tags : ['General']
-                });
-              }
-            });
+            let delNoteSet = new Set<string>();
+            try {
+              const saved = localStorage.getItem('fusion_deleted_note_ids');
+              if (saved) delNoteSet = new Set(JSON.parse(saved));
+            } catch {}
+            deletedNoteIds.forEach(id => delNoteSet.add(id));
+
+            const backendNotes = payload.notes.map((bn: any) => ({
+              ...bn,
+              tags: Array.isArray(bn.tags) && bn.tags.length > 0 ? bn.tags : ['General']
+            }));
+            const merged = mergeNotes(prev, Array.from(delNoteSet), backendNotes);
             try {
               localStorage.setItem('fusion_notes', JSON.stringify(merged));
             } catch (storageErr) {

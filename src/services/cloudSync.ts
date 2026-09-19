@@ -460,7 +460,7 @@ class CloudSyncService {
     );
 
     for (const raw of incoming || []) {
-      if (!raw || !raw.text || raw.isSystemProfileUpdate || raw.text === '__PROFILE_UPDATE__') continue;
+      if (!raw || !raw.text || raw.isSystemProfileUpdate || raw.text === '__PROFILE_UPDATE__' || raw.isSystemNoteDelete || raw.text === '__NOTE_DELETE__') continue;
       const senderRaw = String(raw.sender || '');
       const sender = senderRaw.toLowerCase().includes('ayush') ? 'Ayush' : 'Diwakar';
       const id = raw.id || `pc_${raw.ts || Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
