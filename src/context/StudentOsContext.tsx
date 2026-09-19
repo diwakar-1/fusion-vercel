@@ -1044,6 +1044,35 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     if (!isAuthenticated) return;
 
+    // Direct fetch on mount with since=0 to guarantee immediate fresh hydration of partner & user state
+    cloudSync.fetchStateDirect(currentUser).then(({ data: remoteData, partnerData }) => {
+      if (partnerData?.profile) {
+        const pp = partnerData.profile;
+        setActiveFriend(prev => {
+          const updated: FriendProfile = {
+            ...prev,
+            name: pp.name ?? prev.name,
+            handle: pp.handle ?? prev.handle,
+            avatar: pp.avatar ?? prev.avatar,
+            college: pp.college !== undefined ? pp.college : prev.college,
+            branch: pp.branch !== undefined ? pp.branch : prev.branch,
+            semester: pp.semester !== undefined ? pp.semester : prev.semester,
+            totalXp: pp.totalXp ?? prev.totalXp,
+            streakDays: pp.streakDays ?? prev.streakDays,
+            todayStudiedMinutes: pp.todayStudiedMinutes ?? prev.todayStudiedMinutes,
+            isOnline: true,
+            isFocusing: pp.isFocusing ?? prev.isFocusing,
+            focusSubject: pp.focusSubject ?? prev.focusSubject,
+            currentlyWatching: pp.currentlyWatching ?? prev.currentlyWatching
+          };
+          try {
+            localStorage.setItem(`fusion_partner_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      }
+    }).catch(() => {});
+
     const stopSync = cloudSync.startAutoSync(
       () => currentUser,
       (remoteData, partnerData, meta) => {
@@ -1420,7 +1449,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const o = String((n as any).owner || userKey).toLowerCase();
         return o === userKey || o === currentUser.toLowerCase();
       })
-      .map(n => ({ ...n, owner: userKey, pdfUrl: undefined }));
+      .map(n => ({
+        ...n,
+        owner: userKey,
+        uploadedBy: n.uploadedBy || (userKey === 'ayush' ? 'Ayush' : 'Diwakar'),
+        pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+      }));
 
     cloudSync.pushState(currentUser, {
       profile,

@@ -187,8 +187,22 @@ export const FriendsStudyRoom: React.FC = () => {
                     title="Online in Study Room"
                   />
                 </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  {profile.handle} • Level {profile.level}
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                  <span>{profile.handle} • Level {profile.level}</span>
+                  {(profile.college || profile.branch || profile.semester) && (
+                    <span
+                      style={{
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: '#0284C7',
+                        background: 'rgba(2, 132, 199, 0.12)',
+                        padding: '1px 8px',
+                        borderRadius: 'var(--radius-pill)'
+                      }}
+                    >
+                      {[profile.college, profile.branch, profile.semester].filter(Boolean).join(' • ')}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -303,8 +317,22 @@ export const FriendsStudyRoom: React.FC = () => {
                     title={activeFriend.isOnline ? 'Active in Room' : 'Offline'}
                   />
                 </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  {activeFriend.handle} • Co-Study Partner
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+                  <span>{activeFriend.handle} • Co-Study Partner</span>
+                  {(activeFriend.college || activeFriend.branch || activeFriend.semester) && (
+                    <span
+                      style={{
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        color: '#EA580C',
+                        background: 'rgba(234, 88, 12, 0.12)',
+                        padding: '1px 8px',
+                        borderRadius: 'var(--radius-pill)'
+                      }}
+                    >
+                      {[activeFriend.college, activeFriend.branch, activeFriend.semester].filter(Boolean).join(' • ')}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

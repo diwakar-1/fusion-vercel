@@ -8,12 +8,12 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || 'AIzaSyAJks1kBH-Jjr4ivAmXgx0IuXGju9FG784',
-  authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || 'shreeganga.firebaseapp.com',
-  projectId: (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID || 'shreeganga',
-  storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || 'shreeganga.firebasestorage.app',
-  messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '743944932269',
-  appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '1:743944932269:web:3f7b73398c8f8f6ca8af24'
+  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY || 'AIzaSyBa4R1UgrkWHF4pzw91uY65wRM5DA94hgo',
+  authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || 'studyplanner-d0059.firebaseapp.com',
+  projectId: (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID || 'studyplanner-d0059',
+  storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET || 'studyplanner-d0059.firebasestorage.app',
+  messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '1075761660605',
+  appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '1:1075761660605:web:d105f58da153c1f4abadd4'
 };
 
 function getFirebaseStorageInstance() {
