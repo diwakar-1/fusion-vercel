@@ -168,6 +168,12 @@ export const FriendsStudyRoom: React.FC = () => {
                 <img
                   src={profile.avatar}
                   alt={profile.name}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      profile.name === 'Ayush'
+                        ? 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150'
+                        : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
+                  }}
                   style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
                 />
               </div>
@@ -298,6 +304,12 @@ export const FriendsStudyRoom: React.FC = () => {
                 <img
                   src={activeFriend.avatar}
                   alt={activeFriend.name}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      activeFriend.name === 'Ayush'
+                        ? 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150'
+                        : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
+                  }}
                   style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
                 />
               </div>

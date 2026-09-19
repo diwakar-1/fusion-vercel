@@ -91,25 +91,27 @@ class CloudSyncService {
     const currentUserKey = (user || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
     const partnerUserKey = currentUserKey === 'diwakar' ? 'ayush' : 'diwakar';
 
-    // 1. Try primary sync endpoint with a 10s timeout
+    // 1. Try primary sync endpoint with a 25s timeout (supports heavy payloads over Render)
     try {
       const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(currentUserKey)}&since=0`;
       const response = await fetch(endpoint, {
         headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(25000)
       });
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.data) {
-          this.lastSyncTimestamp = result.lastUpdated || Date.now();
+        if (result.success) {
+          if (result.lastUpdated) {
+            this.lastSyncTimestamp = result.lastUpdated;
+            try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
+          }
           if (result.partner?.lastUpdated) {
             this.lastPartnerSyncTimestamp = result.partner.lastUpdated;
           }
           this.hasInitialPulledUsers[currentUserKey] = true;
-          try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
           return {
-            data: result.data,
+            data: result.data || null,
             partnerData: result.partner?.data || null,
             sharedNotes: Array.isArray(result.sharedNotes) ? result.sharedNotes : []
           };
@@ -268,16 +270,20 @@ class CloudSyncService {
       const endpoint = `${getSyncEndpoint()}?user=${encodeURIComponent(currentUserKey)}&since=${sinceParam}`;
       const response = await fetch(endpoint, {
         headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(7000)
+        signal: AbortSignal.timeout(20000)
       });
 
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
           const userHasNew = isFirstPull || (result.data && (result.hasNewData || (result.lastUpdated && result.lastUpdated > this.lastSyncTimestamp)));
-          const partnerHasNew = result.partner?.data && (
-            isFirstPull || 
-            (result.partner.lastUpdated && result.partner.lastUpdated > this.lastPartnerSyncTimestamp)
+          const partnerHasNew = Boolean(
+            result.partner?.data && (
+              isFirstPull || 
+              !this.lastPartnerSyncTimestamp ||
+              (result.partner.lastUpdated && result.partner.lastUpdated > this.lastPartnerSyncTimestamp) ||
+              result.partner.data.profile
+            )
           );
 
           if (userHasNew) {
@@ -285,8 +291,8 @@ class CloudSyncService {
             try { localStorage.setItem(`fusion_last_sync_${currentUserKey}`, String(this.lastSyncTimestamp)); } catch {}
           }
 
-          if (partnerHasNew) {
-            this.lastPartnerSyncTimestamp = result.partner.lastUpdated || Date.now();
+          if (partnerHasNew && result.partner?.lastUpdated) {
+            this.lastPartnerSyncTimestamp = result.partner.lastUpdated;
           }
 
           this.hasInitialPulledUsers[currentUserKey] = true;
@@ -454,7 +460,7 @@ class CloudSyncService {
     );
 
     for (const raw of incoming || []) {
-      if (!raw || !raw.text) continue;
+      if (!raw || !raw.text || raw.isSystemProfileUpdate || raw.text === '__PROFILE_UPDATE__') continue;
       const senderRaw = String(raw.sender || '');
       const sender = senderRaw.toLowerCase().includes('ayush') ? 'Ayush' : 'Diwakar';
       const id = raw.id || `pc_${raw.ts || Date.now()}_${Math.random().toString(36).slice(2, 7)}`;

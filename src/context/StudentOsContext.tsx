@@ -206,15 +206,18 @@ const DEFAULT_AYUSH_PROFILE: StudentProfile = {
   name: 'Ayush',
   handle: '@ayush_ai',
   avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150',
-  streakDays: 0,
-  totalXp: 100,
+  college: 'CGC',
+  branch: 'Aiml',
+  semester: '3rd',
+  streakDays: 2,
+  totalXp: 485,
   level: 1,
   strikes: 0,
   isPunished: false,
   dailyGoalHours: 4.0,
   dsaGoalHours: 2.0,
   mlGoalHours: 2.0,
-  todayStudiedMinutes: 0,
+  todayStudiedMinutes: 25,
   entryCode: 'AYUSH',
   shortCode: 'AYUSH'
 };
@@ -398,12 +401,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             name: parsed.name || (isDiwakar ? 'Ayush' : 'Diwakar'),
             handle: parsed.handle || (isDiwakar ? '@ayush_ai' : '@diwakar_dev'),
             avatar: parsed.avatar || (isDiwakar ? 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150' : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'),
-            college: parsed.college || '',
-            branch: parsed.branch || '',
-            semester: parsed.semester || '',
-            streakDays: parsed.streakDays ?? 0,
-            todayStudiedMinutes: parsed.todayStudiedMinutes ?? 0,
-            totalXp: parsed.totalXp ?? 100,
+            college: parsed.college || (isDiwakar ? 'CGC' : 'chandigarh group of college'),
+            branch: parsed.branch || 'Aiml',
+            semester: parsed.semester || '3rd',
+            streakDays: parsed.streakDays ?? (isDiwakar ? 2 : 2),
+            todayStudiedMinutes: parsed.todayStudiedMinutes ?? (isDiwakar ? 25 : 0),
+            totalXp: parsed.totalXp ?? (isDiwakar ? 485 : 1545),
             isOnline: parsed.isOnline ?? true,
             isFocusing: parsed.isFocusing ?? false,
             focusSubject: parsed.focusSubject || 'DSA',
@@ -418,9 +421,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       avatar: isDiwakar
         ? 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150'
         : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
-      streakDays: 0,
-      todayStudiedMinutes: 0,
-      totalXp: 100,
+      college: isDiwakar ? 'CGC' : 'chandigarh group of college',
+      branch: 'Aiml',
+      semester: '3rd',
+      streakDays: isDiwakar ? 2 : 2,
+      todayStudiedMinutes: isDiwakar ? 25 : 0,
+      totalXp: isDiwakar ? 485 : 1545,
       isOnline: true,
       isFocusing: false,
       focusSubject: 'DSA',
@@ -927,7 +933,27 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const { type, payload, sender } = event.data || {};
       if (sender === currentUser) return; // ignore self
 
-      if (type === 'PARTNER_FOCUS_UPDATE') {
+      if (type === 'PARTNER_PROFILE_UPDATE') {
+        if (payload && typeof payload === 'object') {
+          setActiveFriend(prev => {
+            const updated = {
+              ...prev,
+              name: payload.name ?? prev.name,
+              handle: payload.handle ?? prev.handle,
+              avatar: payload.avatar ?? prev.avatar,
+              college: payload.college !== undefined && payload.college !== '' ? payload.college : prev.college,
+              branch: payload.branch !== undefined && payload.branch !== '' ? payload.branch : prev.branch,
+              semester: payload.semester !== undefined && payload.semester !== '' ? payload.semester : prev.semester,
+              totalXp: payload.totalXp ?? prev.totalXp,
+              streakDays: payload.streakDays ?? prev.streakDays,
+              todayStudiedMinutes: payload.todayStudiedMinutes ?? prev.todayStudiedMinutes,
+              isOnline: true
+            };
+            try { localStorage.setItem(`fusion_partner_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated)); } catch {}
+            return updated;
+          });
+        }
+      } else if (type === 'PARTNER_FOCUS_UPDATE') {
         setActiveFriend(prev => ({
           ...prev,
           isFocusing: payload.isFocusing,
@@ -1046,17 +1072,19 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Direct fetch on mount with since=0 to guarantee immediate fresh hydration of partner & user state
     cloudSync.fetchStateDirect(currentUser).then(({ data: remoteData, partnerData }) => {
+      hasHydratedFromCloud.current = true;
       if (partnerData?.profile) {
         const pp = partnerData.profile;
+        const isDiwakar = currentUser === 'Diwakar';
         setActiveFriend(prev => {
           const updated: FriendProfile = {
             ...prev,
             name: pp.name ?? prev.name,
             handle: pp.handle ?? prev.handle,
             avatar: pp.avatar ?? prev.avatar,
-            college: pp.college !== undefined ? pp.college : prev.college,
-            branch: pp.branch !== undefined ? pp.branch : prev.branch,
-            semester: pp.semester !== undefined ? pp.semester : prev.semester,
+            college: pp.college !== undefined && pp.college !== '' ? pp.college : (prev.college || (isDiwakar ? 'CGC' : 'chandigarh group of college')),
+            branch: pp.branch !== undefined && pp.branch !== '' ? pp.branch : (prev.branch || 'Aiml'),
+            semester: pp.semester !== undefined && pp.semester !== '' ? pp.semester : (prev.semester || '3rd'),
             totalXp: pp.totalXp ?? prev.totalXp,
             streakDays: pp.streakDays ?? prev.streakDays,
             todayStudiedMinutes: pp.todayStudiedMinutes ?? prev.todayStudiedMinutes,
@@ -1394,8 +1422,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const type = String(event?.type || '').toUpperCase();
       setIsBackendConnected(true);
 
-      if (type === 'PARTNER_PROFILE_UPDATE') {
-        const p = event.payload;
+      const isProfileUpdate =
+        type === 'PARTNER_PROFILE_UPDATE' ||
+        (type === 'PARTNER_CHAT_MESSAGE' && (event.payload?.isSystemProfileUpdate || event.payload?.text === '__PROFILE_UPDATE__'));
+
+      if (isProfileUpdate) {
+        const p = event.payload?.partnerProfile || event.payload;
         if (p && typeof p === 'object') {
           setActiveFriend(prev => {
             const updated: FriendProfile = {
@@ -1403,9 +1435,9 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               ...(p.name ? { name: p.name } : {}),
               ...(p.handle ? { handle: p.handle } : {}),
               ...(p.avatar ? { avatar: p.avatar } : {}),
-              ...(p.college !== undefined ? { college: p.college } : {}),
-              ...(p.branch !== undefined ? { branch: p.branch } : {}),
-              ...(p.semester !== undefined ? { semester: p.semester } : {}),
+              ...(p.college !== undefined && p.college !== '' ? { college: p.college } : {}),
+              ...(p.branch !== undefined && p.branch !== '' ? { branch: p.branch } : {}),
+              ...(p.semester !== undefined && p.semester !== '' ? { semester: p.semester } : {}),
               ...(p.totalXp !== undefined ? { totalXp: p.totalXp } : {}),
               ...(p.streakDays !== undefined ? { streakDays: p.streakDays } : {}),
               ...(p.todayStudiedMinutes !== undefined ? { todayStudiedMinutes: p.todayStudiedMinutes } : {}),
@@ -1425,7 +1457,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       if (type !== 'PARTNER_CHAT_MESSAGE') return;
       const payload = event.payload;
-      if (!payload?.text) return;
+      if (!payload?.text || payload.isSystemProfileUpdate || payload.text === '__PROFILE_UPDATE__') return;
       setPartnerChatMessages(prev => {
         const merged = cloudSync.mergeChatMessages(prev, [payload]);
         if (merged.length === prev.length) return prev;
@@ -1719,6 +1751,19 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } catch {}
       cloudSync.pushStateDirect(currentUser, { profile: next });
       realtimeWs.send('PARTNER_PROFILE_UPDATE', next);
+      realtimeWs.send('PARTNER_CHAT_MESSAGE', {
+        room: 'duo_chat',
+        isSystemProfileUpdate: true,
+        partnerProfile: next,
+        text: '__PROFILE_UPDATE__'
+      });
+      if (broadcastChannel) {
+        broadcastChannel.postMessage({
+          type: 'PARTNER_PROFILE_UPDATE',
+          sender: currentUser,
+          payload: next
+        });
+      }
       return next;
     });
     api.updateProfileAvatar({ userName: currentUser, avatar: avatarUrl });
@@ -1732,6 +1777,19 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       } catch {}
       cloudSync.pushStateDirect(currentUser, { profile: next });
       realtimeWs.send('PARTNER_PROFILE_UPDATE', next);
+      realtimeWs.send('PARTNER_CHAT_MESSAGE', {
+        room: 'duo_chat',
+        isSystemProfileUpdate: true,
+        partnerProfile: next,
+        text: '__PROFILE_UPDATE__'
+      });
+      if (broadcastChannel) {
+        broadcastChannel.postMessage({
+          type: 'PARTNER_PROFILE_UPDATE',
+          sender: currentUser,
+          payload: next
+        });
+      }
       return next;
     });
   };

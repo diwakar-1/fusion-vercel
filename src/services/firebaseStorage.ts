@@ -34,27 +34,43 @@ export async function uploadNotePdf(
   fileOrBlob: File | Blob,
   fileName: string
 ): Promise<string | null> {
-  const storage = getFirebaseStorageInstance();
-  if (!storage) return null;
-
+  let app: any;
   try {
-    const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storageRef = ref(storage, `notes_pdfs/${noteId}_${safeFileName}`);
-    const metadata = {
-      contentType: 'application/pdf',
-      customMetadata: {
-        originalName: fileName,
-        uploadedAt: new Date().toISOString()
-      }
-    };
-
-    const snapshot = await uploadBytes(storageRef, fileOrBlob, metadata);
-    const downloadUrl = await getDownloadURL(snapshot.ref);
-    return downloadUrl;
-  } catch (err) {
-    console.warn('[Firebase PDF Upload Error]', err);
+    app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  } catch {
     return null;
   }
+  if (!app) return null;
+
+  const buckets = [
+    firebaseConfig.storageBucket,
+    'studyplanner-d0059.firebasestorage.app',
+    'studyplanner-d0059.appspot.com'
+  ];
+
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const metadata = {
+    contentType: 'application/pdf',
+    customMetadata: {
+      originalName: fileName,
+      uploadedAt: new Date().toISOString()
+    }
+  };
+
+  for (const bucket of Array.from(new Set(buckets))) {
+    try {
+      const bucketUrl = bucket.startsWith('gs://') ? bucket : `gs://${bucket}`;
+      const storage = getStorage(app, bucketUrl);
+      const storageRef = ref(storage, `notes_pdfs/${noteId}_${safeFileName}`);
+      const snapshot = await uploadBytes(storageRef, fileOrBlob, metadata);
+      const downloadUrl = await getDownloadURL(snapshot.ref);
+      if (downloadUrl) return downloadUrl;
+    } catch (err) {
+      console.warn(`[Firebase Storage upload attempt failed for ${bucket}]`, err);
+    }
+  }
+
+  return null;
 }
 
 export function isFirebaseStorageConfigured(): boolean {
