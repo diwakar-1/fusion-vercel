@@ -58,7 +58,9 @@ export const NotesKnowledgeBase: React.FC = () => {
     pdfUrl?: string;
     fileName?: string;
     fileSize?: string;
+    uploadedBy?: string;
   } | null>(null);
+  const [isUploadingPdf, setIsUploadingPdf] = useState<boolean>(false);
 
   // Solved Question Screenshot Modal State
   const [showScreenshotModal, setShowScreenshotModal] = useState<boolean>(false);
@@ -87,22 +89,31 @@ export const NotesKnowledgeBase: React.FC = () => {
   const handlePdfNoteUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setIsUploadingPdf(true);
+    const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
+    const subjectTag = selectedSubject === 'All' ? 'DSA' : selectedSubject;
+    const sizeStr = file.size > 1024 * 1024 
+      ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+      : `${(file.size / 1024).toFixed(1)} KB`;
+
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const dataUrl = event.target?.result as string;
-      const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
-      const subjectTag = selectedSubject === 'All' ? 'DSA' : selectedSubject;
-      const sizeStr = file.size > 1024 * 1024 
-        ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-        : `${(file.size / 1024).toFixed(1)} KB`;
-      addNote({
-        title: cleanTitle,
-        content: `Uploaded PDF document: ${file.name}`,
-        tags: [subjectTag],
-        pdfUrl: dataUrl,
-        fileName: file.name,
-        fileSize: sizeStr
-      });
+      try {
+        await addNote({
+          title: cleanTitle,
+          content: `Uploaded PDF document: ${file.name}`,
+          tags: [subjectTag],
+          pdfUrl: dataUrl,
+          fileName: file.name,
+          fileSize: sizeStr,
+          pdfFile: file
+        });
+      } catch (err) {
+        console.error('[Note Upload Failed]', err);
+      } finally {
+        setIsUploadingPdf(false);
+      }
       setActiveTab('notes');
       setSelectedSubject('All');
     };
@@ -112,13 +123,15 @@ export const NotesKnowledgeBase: React.FC = () => {
 
   const handlePreviewNote = async (n: any) => {
     let rawPdfUrl = n.pdfUrl;
+    // If it's a cloud storage URL (http/https), we use it directly.
+    // Otherwise, try to fetch from local IndexedDB if missing or data URL
     if (!rawPdfUrl && (n.hasPdf || n.fileName?.toLowerCase().endsWith('.pdf'))) {
       const dbData = await getPdfFromIndexedDb(n.id);
       if (dbData?.pdfDataUrl) {
         rawPdfUrl = dbData.pdfDataUrl;
       }
     }
-    const resolvedUrl = rawPdfUrl ? dataUrlToBlobUrl(rawPdfUrl) : undefined;
+    const resolvedUrl = rawPdfUrl?.startsWith('data:') ? dataUrlToBlobUrl(rawPdfUrl) : rawPdfUrl;
     setPreviewNote({
       title: n.title,
       content: n.content,
@@ -126,7 +139,8 @@ export const NotesKnowledgeBase: React.FC = () => {
       createdAt: n.createdAt,
       pdfUrl: resolvedUrl || rawPdfUrl,
       fileName: n.fileName,
-      fileSize: n.fileSize
+      fileSize: n.fileSize,
+      uploadedBy: n.uploadedBy || (n.owner?.toLowerCase() === 'ayush' ? 'Ayush' : 'Diwakar')
     });
   };
 
@@ -226,16 +240,18 @@ export const NotesKnowledgeBase: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              cursor: 'pointer',
+              cursor: isUploadingPdf ? 'not-allowed' : 'pointer',
               border: '1.5px solid rgba(2, 132, 199, 0.35)',
-              background: 'rgba(255, 255, 255, 0.85)'
+              background: 'rgba(255, 255, 255, 0.85)',
+              opacity: isUploadingPdf ? 0.7 : 1
             }}
           >
             <Upload size={16} color="#0284C7" />
-            <span>Upload PDF Note</span>
+            <span>{isUploadingPdf ? 'Uploading to Cloud...' : 'Upload PDF Note'}</span>
             <input
               type="file"
               accept=".pdf"
+              disabled={isUploadingPdf}
               style={{ display: 'none' }}
               onChange={handlePdfNoteUpload}
             />
@@ -430,13 +446,22 @@ export const NotesKnowledgeBase: React.FC = () => {
             </div>
             <label
               className="charcoal-pill-btn"
-              style={{ padding: '10px 24px', fontSize: '0.88rem', display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+              style={{
+                padding: '10px 24px',
+                fontSize: '0.88rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                cursor: isUploadingPdf ? 'not-allowed' : 'pointer',
+                opacity: isUploadingPdf ? 0.7 : 1
+              }}
             >
               <Upload size={16} />
-              <span>Upload PDF Note Now</span>
+              <span>{isUploadingPdf ? 'Uploading to Cloud...' : 'Upload PDF Note Now'}</span>
               <input
                 type="file"
                 accept=".pdf"
+                disabled={isUploadingPdf}
                 style={{ display: 'none' }}
                 onChange={handlePdfNoteUpload}
               />
@@ -470,6 +495,26 @@ export const NotesKnowledgeBase: React.FC = () => {
                       >
                         {(n.tags && n.tags[0]) || 'General'}
                       </span>
+                      {/* Author Attribution Badge */}
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '3px 9px',
+                          borderRadius: 'var(--radius-pill)',
+                          background: (n.uploadedBy?.toLowerCase() === 'ayush' || (n as any).owner?.toLowerCase() === 'ayush')
+                            ? 'rgba(59, 130, 246, 0.14)'
+                            : 'rgba(16, 185, 129, 0.14)',
+                          color: (n.uploadedBy?.toLowerCase() === 'ayush' || (n as any).owner?.toLowerCase() === 'ayush')
+                            ? '#2563EB'
+                            : '#059669',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                      >
+                        Uploaded by {n.uploadedBy || ((n as any).owner?.toLowerCase() === 'ayush' ? 'Ayush' : 'Diwakar')}
+                      </span>
                       {(n.pdfUrl || n.hasPdf || n.fileName?.toLowerCase().endsWith('.pdf')) && (
                         <span
                           style={{
@@ -486,6 +531,23 @@ export const NotesKnowledgeBase: React.FC = () => {
                         >
                           <FileText size={12} />
                           <span>PDF Document ({n.fileSize || 'PDF'})</span>
+                        </span>
+                      )}
+                      {n.pdfUrl?.startsWith('http') && (
+                        <span
+                          style={{
+                            fontSize: '0.70rem',
+                            fontWeight: 600,
+                            padding: '2px 7px',
+                            borderRadius: 'var(--radius-pill)',
+                            background: 'rgba(99, 102, 241, 0.1)',
+                            color: '#4F46E5',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3
+                          }}
+                        >
+                          Cloud Synced
                         </span>
                       )}
                     </div>
@@ -837,11 +899,16 @@ export const NotesKnowledgeBase: React.FC = () => {
                 borderBottom: '1px solid rgba(255,255,255,0.08)'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <FileText size={18} color="#38BDF8" />
                 <span style={{ fontSize: '0.94rem', fontWeight: 700 }}>
                   {previewNote.title}.pdf (Document Viewer)
                 </span>
+                {previewNote.uploadedBy && (
+                  <span style={{ fontSize: '0.74rem', color: '#38BDF8', background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
+                    Uploaded by {previewNote.uploadedBy}
+                  </span>
+                )}
                 {previewNote.fileSize && (
                   <span style={{ fontSize: '0.74rem', color: '#94A3B8', background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '6px' }}>
                     {previewNote.fileSize}

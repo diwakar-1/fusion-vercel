@@ -119,6 +119,7 @@ export interface PlaylistLecture {
   completed: boolean;
   thumbnail?: string;
   phase?: string;
+  xpClaimed?: boolean;
 }
 
 export interface VideoCourse {
@@ -256,4 +257,5 @@ export interface StudentNote {
   fileSize?: string;
   hasPdf?: boolean;
   owner?: string;
+  uploadedBy?: string;
 }

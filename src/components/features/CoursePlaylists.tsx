@@ -751,7 +751,11 @@ export const CoursePlaylists: React.FC = () => {
                   }}
                 >
                   <CheckCircle2 size={18} />
-                  <span>{activeLecture.completed ? 'Completed (+50 XP)' : 'Mark Lecture Done'}</span>
+                  <span>
+                    {activeLecture.completed
+                      ? (activeLecture.xpClaimed ? 'Completed (+50 XP Claimed)' : 'Completed')
+                      : (activeLecture.xpClaimed ? 'Mark Lecture Done (XP Claimed)' : 'Mark Lecture Done (+50 XP)')}
+                  </span>
                 </button>
 
                 {/* Mark Whole Series Complete Button */}
@@ -1108,9 +1112,20 @@ export const CoursePlaylists: React.FC = () => {
                     >
                       {lec.title}
                     </div>
-                    {lec.phase && (
-                      <span style={{ fontSize: '0.68rem', color: '#0284C7', fontWeight: 600 }}>{lec.phase}</span>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                      {lec.phase && (
+                        <span style={{ fontSize: '0.68rem', color: '#0284C7', fontWeight: 600 }}>{lec.phase}</span>
+                      )}
+                      {lec.xpClaimed ? (
+                        <span style={{ fontSize: '0.66rem', color: '#10B981', fontWeight: 700 }}>
+                          ✓ 50 XP Claimed
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.66rem', color: '#F59E0B', fontWeight: 700 }}>
+                          +50 XP
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Interactive Checklist Checkbox */}
@@ -1121,7 +1136,11 @@ export const CoursePlaylists: React.FC = () => {
                         toggleLectureCompleted(activeCourse.id, lec.id);
                       }
                     }}
-                    title={lec.completed ? 'Mark as Incomplete' : 'Mark as Completed'}
+                    title={
+                      lec.completed
+                        ? (lec.xpClaimed ? 'Completed (+50 XP Claimed)' : 'Mark as Incomplete')
+                        : (lec.xpClaimed ? 'Mark Done (XP Already Claimed)' : 'Mark as Completed (+50 XP)')
+                    }
                     style={{
                       background: 'transparent',
                       border: 'none',

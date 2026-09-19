@@ -59,11 +59,19 @@ export const FriendsStudyRoom: React.FC = () => {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [partnerChatMessages]);
+  const TASK_CATEGORIES = [
+    { name: 'Watching Playlist / Course', xp: 100, desc: '100 XP (Standard video lecture study — locked at 100 XP)' },
+    { name: 'DSA / LeetCode Challenge', xp: 100, desc: '100 XP (Coding & problem solving)' },
+    { name: 'Machine Learning Deep Study', xp: 100, desc: '100 XP (AI/ML concept & project)' },
+    { name: 'Deep Focus Block (45+ min)', xp: 100, desc: '100 XP (Sustained focus session)' },
+    { name: 'System Design / Project Work', xp: 100, desc: '100 XP (Engineering project work)' },
+    { name: 'Notes Revision / Theory Review', xp: 50, desc: '50 XP (Revision & recall)' },
+    { name: 'Quick Quest / Daily Drill', xp: 25, desc: '25 XP (Quick micro-task)' }
+  ];
+
   const [showAddCustomTaskModal, setShowAddCustomTaskModal] = useState<boolean>(false);
   const [customTaskTitle, setCustomTaskTitle] = useState('');
-  const [customTaskPlatform, setCustomTaskPlatform] = useState('LeetCode');
-  const [customXpMode, setCustomXpMode] = useState<'custom' | 'random'>('random');
-  const [customTaskExp, setCustomTaskExp] = useState(50);
+  const [customTaskCategory, setCustomTaskCategory] = useState('Watching Playlist / Course');
   const [customIsCore, setCustomIsCore] = useState(false);
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -81,14 +89,12 @@ export const FriendsStudyRoom: React.FC = () => {
   const handleCreateCustomTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTaskTitle.trim()) return;
-    const finalXp = customXpMode === 'random'
-      ? Math.floor(Math.random() * 56) + 25 // 25 to 80 XP
-      : customTaskExp;
+    const cat = TASK_CATEGORIES.find(c => c.name === customTaskCategory) || TASK_CATEGORIES[0];
 
     addDailyTask({
       title: customTaskTitle.trim(),
-      platform: customTaskPlatform.trim() || 'Custom Duo Quest',
-      exp: finalXp,
+      platform: customTaskCategory,
+      exp: cat.xp,
       isCoreStreakTask: customIsCore,
       isCustom: true,
       createdBy: profile.name
@@ -1027,100 +1033,75 @@ export const FriendsStudyRoom: React.FC = () => {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
-                    Platform / Subject
-                  </label>
-                  <select
-                    value={customTaskPlatform}
-                    onChange={e => setCustomTaskPlatform(e.target.value)}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
+                  Task Category (Standard Locked XP)
+                </label>
+                <select
+                  value={customTaskCategory}
+                  onChange={e => setCustomTaskCategory(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.15)',
+                    fontSize: '0.92rem',
+                    background: '#FFFFFF'
+                  }}
+                >
+                  {TASK_CATEGORIES.map(cat => (
+                    <option key={cat.name} value={cat.name}>
+                      {cat.name} (+{cat.xp} XP)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Locked XP Reward Display Box */}
+              {(() => {
+                const currentCat = TASK_CATEGORIES.find(c => c.name === customTaskCategory) || TASK_CATEGORIES[0];
+                return (
+                  <div
                     style={{
-                      width: '100%',
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(0,0,0,0.15)',
-                      fontSize: '0.92rem'
+                      padding: '14px 16px',
+                      borderRadius: '14px',
+                      background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(14, 165, 233, 0.08) 100%)',
+                      border: '1px solid rgba(99, 102, 241, 0.25)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12
                     }}
                   >
-                    <option value="LeetCode">LeetCode</option>
-                    <option value="Machine Learning">Machine Learning</option>
-                    <option value="Focus Timer">Focus Timer</option>
-                    <option value="System Design">System Design</option>
-                    <option value="College Project">College Project</option>
-                    <option value="Custom Quest">Custom Quest</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6 }}>
-                    XP Reward Mode
-                  </label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <button
-                      type="button"
-                      onClick={() => setCustomXpMode('random')}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <Award size={16} color="#4F46E5" />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#312E81' }}>
+                          Standard Locked XP Rule
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.78rem', color: '#4338CA' }}>
+                        {currentCat.desc}
+                      </span>
+                    </div>
+                    <span
                       style={{
-                        padding: '10px 10px',
-                        borderRadius: '10px',
-                        border: customXpMode === 'random' ? '2px solid #EA580C' : '1px solid rgba(0,0,0,0.15)',
-                        background: customXpMode === 'random' ? 'rgba(234, 88, 12, 0.1)' : '#FFFFFF',
-                        color: customXpMode === 'random' ? '#EA580C' : 'var(--text-secondary)',
-                        fontWeight: 700,
-                        fontSize: '0.78rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                        cursor: 'pointer'
+                        fontSize: '1.05rem',
+                        fontWeight: 900,
+                        color: '#4F46E5',
+                        background: '#FFFFFF',
+                        padding: '6px 14px',
+                        borderRadius: 'var(--radius-pill)',
+                        boxShadow: '0 2px 8px rgba(79, 70, 229, 0.15)',
+                        border: '1px solid rgba(99, 102, 241, 0.2)',
+                        whiteSpace: 'nowrap'
                       }}
                     >
-                      <Dices size={14} />
-                      <span>🎲 Random (25-80)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCustomXpMode('custom')}
-                      style={{
-                        padding: '10px 10px',
-                        borderRadius: '10px',
-                        border: customXpMode === 'custom' ? '2px solid #4F46E5' : '1px solid rgba(0,0,0,0.15)',
-                        background: customXpMode === 'custom' ? 'rgba(79, 70, 229, 0.1)' : '#FFFFFF',
-                        color: customXpMode === 'custom' ? '#4F46E5' : 'var(--text-secondary)',
-                        fontWeight: 700,
-                        fontSize: '0.78rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Award size={14} />
-                      <span>Specific XP</span>
-                    </button>
+                      +{currentCat.xp} XP
+                    </span>
                   </div>
-                  {customXpMode === 'custom' && (
-                    <select
-                      value={customTaskExp}
-                      onChange={e => setCustomTaskExp(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        borderRadius: '10px',
-                        border: '1px solid rgba(0,0,0,0.15)',
-                        fontSize: '0.88rem',
-                        marginTop: 8
-                      }}
-                    >
-                      <option value={25}>+25 XP (Quick Task)</option>
-                      <option value={50}>+50 XP (Standard Task)</option>
-                      <option value={75}>+75 XP (Focused Task)</option>
-                      <option value={100}>+100 XP (High Impact)</option>
-                    </select>
-                  )}
-                </div>
-              </div>
+                );
+              })()}
 
               <label
                 style={{

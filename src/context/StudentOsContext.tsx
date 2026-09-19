@@ -9,6 +9,7 @@ import { realtimeWs } from '../services/realtimeWs';
 import { GeminiService } from '../services/gemini';
 import { YouTubeService } from '../services/youtube';
 import { savePdfToIndexedDb, deletePdfFromIndexedDb } from '../services/pdfStorage';
+import { uploadNotePdf } from '../services/firebaseStorage';
 import {
   StudentProfile,
   FriendProfile,
@@ -69,6 +70,7 @@ interface StudentOsContextType {
   profile: StudentProfile;
   updateProfile: (updates: Partial<StudentProfile>) => void;
   updateProfileAvatar: (avatarUrl: string) => void;
+  awardXp: (amount: number, reason?: string) => void;
 
   // Partner Co-Study (Diwakar & Ayush)
   activeFriend: FriendProfile;
@@ -80,7 +82,7 @@ interface StudentOsContextType {
 
   // Notes & Coding Question Sheets
   notes: StudentNote[];
-  addNote: (note: { title: string; content: string; tags: string[]; pdfUrl?: string; fileName?: string; fileSize?: string }) => void;
+  addNote: (note: { title: string; content: string; tags: string[]; pdfUrl?: string; fileName?: string; fileSize?: string; pdfFile?: File | Blob }) => Promise<void> | void;
   deleteNote: (id: string) => void;
   pdfQuestionSheets: PdfQuestionSheet[];
   addPdfQuestionSheet: (sheet: Omit<PdfQuestionSheet, 'id' | 'totalCount' | 'completedCount'>) => void;
@@ -387,6 +389,29 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [activeFriend, setActiveFriend] = useState<FriendProfile>(() => {
     const isDiwakar = currentUser === 'Diwakar';
+    try {
+      const saved = localStorage.getItem(`fusion_partner_profile_${currentUser.toLowerCase()}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            name: parsed.name || (isDiwakar ? 'Ayush' : 'Diwakar'),
+            handle: parsed.handle || (isDiwakar ? '@ayush_ai' : '@diwakar_dev'),
+            avatar: parsed.avatar || (isDiwakar ? 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150' : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'),
+            college: parsed.college || '',
+            branch: parsed.branch || '',
+            semester: parsed.semester || '',
+            streakDays: parsed.streakDays ?? 0,
+            todayStudiedMinutes: parsed.todayStudiedMinutes ?? 0,
+            totalXp: parsed.totalXp ?? 100,
+            isOnline: parsed.isOnline ?? true,
+            isFocusing: parsed.isFocusing ?? false,
+            focusSubject: parsed.focusSubject || 'DSA',
+            currentlyWatching: parsed.currentlyWatching ?? null
+          };
+        }
+      }
+    } catch {}
     return {
       name: isDiwakar ? 'Ayush' : 'Diwakar',
       handle: isDiwakar ? '@ayush_ai' : '@diwakar_dev',
@@ -758,6 +783,37 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     ? hasWatchedPlaylistVideoToday
     : dailyTasks.some(t => t.isCoreStreakTask && t.completed);
 
+  // Check and break streak if a full calendar day passed without doing core tasks
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+    const today = new Date().toISOString().split('T')[0];
+    const lastStreakDate = localStorage.getItem(`fusion_last_streak_date_${currentUser}`);
+
+    // If vacation mode is active, streak is preserved from breaking
+    if (isVacationPaused) return;
+
+    if (lastStreakDate && lastStreakDate !== today) {
+      const lastDate = new Date(lastStreakDate);
+      const currentDate = new Date(today);
+      const diffDays = Math.floor((currentDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      // If more than 1 day passed without completing core tasks (e.g. yesterday was missed)
+      if (diffDays > 1) {
+        console.warn(`[Streak Broken] ${diffDays} calendar days missed. Resetting streak to 0.`);
+        setProfile(p => {
+          if (p.streakDays === 0) return p;
+          const updated: StudentProfile = { ...p, streakDays: 0 };
+          try {
+            localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+          } catch {}
+          cloudSync.pushStateDirect(currentUser, { profile: updated }).catch(() => {});
+          realtimeWs.send('PARTNER_PROFILE_UPDATE', updated);
+          return updated;
+        });
+      }
+    }
+  }, [isAuthenticated, currentUser, isVacationPaused]);
+
   // Auto-increment streak when core tasks completed today (once per calendar day only)
   useEffect(() => {
     if (!isAuthenticated || !isStreakProtectedToday) return;
@@ -766,7 +822,15 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (lastStreakDate === today) return; // Already counted today
     // New day with tasks done — increment streak!
     localStorage.setItem(`fusion_last_streak_date_${currentUser}`, today);
-    setProfile(p => ({ ...p, streakDays: Math.max(1, p.streakDays + 1) }));
+    setProfile(p => {
+      const updated: StudentProfile = { ...p, streakDays: p.streakDays + 1 };
+      try {
+        localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+      } catch {}
+      cloudSync.pushStateDirect(currentUser, { profile: updated }).catch(() => {});
+      realtimeWs.send('PARTNER_PROFILE_UPDATE', updated);
+      return updated;
+    });
   }, [isAuthenticated, isStreakProtectedToday, currentUser]);
 
   // Heatmap generation from actual study sessions with accurate local calendar date parsing
@@ -1176,12 +1240,28 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
         if (partnerData) {
           if (partnerData.profile) {
-            setActiveFriend(prev => ({
-              ...prev,
-              totalXp: partnerData.profile.totalXp ?? prev.totalXp,
-              streakDays: partnerData.profile.streakDays ?? prev.streakDays,
-              todayStudiedMinutes: partnerData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes
-            }));
+            setActiveFriend(prev => {
+              const updated: FriendProfile = {
+                ...prev,
+                name: partnerData.profile.name ?? prev.name,
+                handle: partnerData.profile.handle ?? prev.handle,
+                avatar: partnerData.profile.avatar ?? prev.avatar,
+                college: partnerData.profile.college !== undefined ? partnerData.profile.college : prev.college,
+                branch: partnerData.profile.branch !== undefined ? partnerData.profile.branch : prev.branch,
+                semester: partnerData.profile.semester !== undefined ? partnerData.profile.semester : prev.semester,
+                totalXp: partnerData.profile.totalXp ?? prev.totalXp,
+                streakDays: partnerData.profile.streakDays ?? prev.streakDays,
+                todayStudiedMinutes: partnerData.profile.todayStudiedMinutes ?? prev.todayStudiedMinutes,
+                isOnline: true,
+                isFocusing: partnerData.profile.isFocusing ?? partnerData.isFocusing ?? prev.isFocusing,
+                focusSubject: partnerData.profile.focusSubject ?? partnerData.focusSubject ?? prev.focusSubject,
+                currentlyWatching: partnerData.profile.currentlyWatching ?? partnerData.currentlyWatching ?? prev.currentlyWatching
+              };
+              try {
+                localStorage.setItem(`fusion_partner_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+              } catch {}
+              return updated;
+            });
           }
           if (Array.isArray(partnerData.notes) && partnerData.notes.length > 0) {
             setNotes(prev => {
@@ -1193,11 +1273,17 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                   ...(existing || {}),
                   ...rn,
                   owner: rn.owner || (currentUser === 'Diwakar' ? 'ayush' : 'diwakar'),
-                  pdfUrl: existing?.pdfUrl || rn.pdfUrl
+                  uploadedBy: rn.uploadedBy || (currentUser === 'Diwakar' ? 'Ayush' : 'Diwakar'),
+                  pdfUrl: rn.pdfUrl || existing?.pdfUrl
                 });
               });
               const merged = Array.from(byId.values());
-              try { localStorage.setItem('fusion_notes', JSON.stringify(merged.map(n => ({ ...n, pdfUrl: undefined })))); } catch {}
+              try {
+                localStorage.setItem('fusion_notes', JSON.stringify(merged.map(n => ({
+                  ...n,
+                  pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+                }))));
+              } catch {}
               return merged;
             });
           }
@@ -1277,6 +1363,37 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const unsub = realtimeWs.subscribe((event) => {
       const type = String(event?.type || '').toUpperCase();
+      setIsBackendConnected(true);
+
+      if (type === 'PARTNER_PROFILE_UPDATE') {
+        const p = event.payload;
+        if (p && typeof p === 'object') {
+          setActiveFriend(prev => {
+            const updated: FriendProfile = {
+              ...prev,
+              ...(p.name ? { name: p.name } : {}),
+              ...(p.handle ? { handle: p.handle } : {}),
+              ...(p.avatar ? { avatar: p.avatar } : {}),
+              ...(p.college !== undefined ? { college: p.college } : {}),
+              ...(p.branch !== undefined ? { branch: p.branch } : {}),
+              ...(p.semester !== undefined ? { semester: p.semester } : {}),
+              ...(p.totalXp !== undefined ? { totalXp: p.totalXp } : {}),
+              ...(p.streakDays !== undefined ? { streakDays: p.streakDays } : {}),
+              ...(p.todayStudiedMinutes !== undefined ? { todayStudiedMinutes: p.todayStudiedMinutes } : {}),
+              ...(p.isFocusing !== undefined ? { isFocusing: p.isFocusing } : {}),
+              ...(p.focusSubject !== undefined ? { focusSubject: p.focusSubject } : {}),
+              ...(p.currentlyWatching !== undefined ? { currentlyWatching: p.currentlyWatching } : {}),
+              isOnline: true
+            };
+            try {
+              localStorage.setItem(`fusion_partner_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
+        }
+        return;
+      }
+
       if (type !== 'PARTNER_CHAT_MESSAGE') return;
       const payload = event.payload;
       if (!payload?.text) return;
@@ -1286,7 +1403,6 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         try { localStorage.setItem('fusion_partner_chat', JSON.stringify(merged)); } catch {}
         return merged;
       });
-      setIsBackendConnected(true);
     });
 
     return () => {
@@ -1444,8 +1560,38 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const mergedNotes = Array.from(byId.values());
             if (mergedNotes.length > 0) {
               setNotes(mergedNotes);
-              try { localStorage.setItem('fusion_notes', JSON.stringify(mergedNotes.map((n: any) => ({ ...n, pdfUrl: undefined })))); } catch {}
+              try {
+                localStorage.setItem('fusion_notes', JSON.stringify(mergedNotes.map((n: any) => ({
+                  ...n,
+                  pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+                }))));
+              } catch {}
             }
+          }
+          if (partnerData?.profile) {
+            const pp = partnerData.profile;
+            setActiveFriend(prev => {
+              const updated: FriendProfile = {
+                ...prev,
+                name: pp.name ?? prev.name,
+                handle: pp.handle ?? prev.handle,
+                avatar: pp.avatar ?? prev.avatar,
+                college: pp.college !== undefined ? pp.college : prev.college,
+                branch: pp.branch !== undefined ? pp.branch : prev.branch,
+                semester: pp.semester !== undefined ? pp.semester : prev.semester,
+                totalXp: pp.totalXp ?? prev.totalXp,
+                streakDays: pp.streakDays ?? prev.streakDays,
+                todayStudiedMinutes: pp.todayStudiedMinutes ?? prev.todayStudiedMinutes,
+                isOnline: true,
+                isFocusing: pp.isFocusing ?? prev.isFocusing,
+                focusSubject: pp.focusSubject ?? prev.focusSubject,
+                currentlyWatching: pp.currentlyWatching ?? prev.currentlyWatching
+              };
+              try {
+                localStorage.setItem(`fusion_partner_profile_${user.toLowerCase()}`, JSON.stringify(updated));
+              } catch {}
+              return updated;
+            });
           }
           if (Array.isArray(remoteData.studyLogs)) {
             setStudySessions(remoteData.studyLogs);
@@ -1509,11 +1655,36 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     localStorage.removeItem('fusion_user');
   };
 
+  // Centralized XP reward with guaranteed persistence & partner sync
+  const awardXp = useCallback((amount: number, reason?: string) => {
+    if (amount <= 0) return;
+    setProfile(prev => {
+      const nextXp = prev.totalXp + amount;
+      const nextLevel = Math.floor(nextXp / 500) + 1;
+      const updated: StudentProfile = {
+        ...prev,
+        totalXp: nextXp,
+        level: Math.max(prev.level, nextLevel)
+      };
+      try {
+        localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('[XP Persistence Warning]', e);
+      }
+      cloudSync.pushStateDirect(currentUser, { profile: updated }).catch(() => {});
+      realtimeWs.send('PARTNER_PROFILE_UPDATE', updated);
+      return updated;
+    });
+  }, [currentUser]);
+
   const updateProfileAvatar = (avatarUrl: string) => {
     setProfile(prev => {
       const next = { ...prev, avatar: avatarUrl };
-      localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(next));
-      cloudSync.pushState(currentUser, { profile: next });
+      try {
+        localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(next));
+      } catch {}
+      cloudSync.pushStateDirect(currentUser, { profile: next });
+      realtimeWs.send('PARTNER_PROFILE_UPDATE', next);
       return next;
     });
     api.updateProfileAvatar({ userName: currentUser, avatar: avatarUrl });
@@ -1522,8 +1693,11 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const updateProfile = (updates: Partial<StudentProfile>) => {
     setProfile(prev => {
       const next = { ...prev, ...updates };
-      localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(next));
-      cloudSync.pushState(currentUser, { profile: next });
+      try {
+        localStorage.setItem(`fusion_profile_${currentUser.toLowerCase()}`, JSON.stringify(next));
+      } catch {}
+      cloudSync.pushStateDirect(currentUser, { profile: next });
+      realtimeWs.send('PARTNER_PROFILE_UPDATE', next);
       return next;
     });
   };
@@ -1731,7 +1905,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (p.id === problemId) {
           if (newStatus === 'Solved' && p.status !== 'Solved') {
             confetti({ particleCount: 40, spread: 50 });
-            setProfile(pr => ({ ...pr, totalXp: pr.totalXp + 50 }));
+            awardXp(50, 'DSA Problem Solved');
           }
           return { ...p, status: newStatus };
         }
@@ -1755,10 +1929,18 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               const nextState = !lec.completed;
               if (nextState) {
                 confetti({ particleCount: 45, spread: 60 });
-                setProfile(p => ({ ...p, totalXp: p.totalXp + 50 }));
+                // XP is awarded ONLY ONCE — prevents duplicate XP exploit when unchecking/rechecking
+                if (!lec.xpClaimed) {
+                  awardXp(50, `Playlist Lecture: ${lec.title}`);
+                }
                 markPlaylistVideoWatchedToday();
               }
-              return { ...lec, completed: nextState };
+              return {
+                ...lec,
+                completed: nextState,
+                // Once claimed, xpClaimed stays true forever
+                xpClaimed: lec.xpClaimed || nextState
+              };
             }
             return lec;
           });
@@ -1771,19 +1953,28 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
         return c;
       });
-      localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      try {
+        localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      } catch {}
+      cloudSync.pushState(currentUser, { courses: updated });
       return updated;
     });
   };
 
   const markAllLecturesCompleted = (courseId: string, markComplete = true) => {
     setCourses(prev => {
-      let newlyCompleted = 0;
+      let newlyClaimedCount = 0;
       const updated = prev.map(c => {
         if (c.id === courseId && c.lectures) {
           const updatedLectures = c.lectures.map(lec => {
-            if (markComplete && !lec.completed) newlyCompleted++;
-            return { ...lec, completed: markComplete };
+            if (markComplete && !lec.xpClaimed) {
+              newlyClaimedCount++;
+            }
+            return {
+              ...lec,
+              completed: markComplete,
+              xpClaimed: lec.xpClaimed || markComplete
+            };
           });
           const completedCount = markComplete ? updatedLectures.length : 0;
           return {
@@ -1794,12 +1985,14 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
         return c;
       });
-      if (newlyCompleted > 0) {
+      if (newlyClaimedCount > 0) {
         confetti({ particleCount: 75, spread: 85 });
-        setProfile(p => ({ ...p, totalXp: p.totalXp + (newlyCompleted * 50) }));
+        awardXp(newlyClaimedCount * 50, 'Series Completed');
         markPlaylistVideoWatchedToday();
       }
-      localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      try {
+        localStorage.setItem('fusion_courses', JSON.stringify(updated));
+      } catch {}
       cloudSync.pushState(currentUser, { courses: updated });
       return updated;
     });
@@ -1942,11 +2135,33 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   // Notes
-  const addNote = (note: { title: string; content: string; tags: string[]; pdfUrl?: string; fileName?: string; fileSize?: string }) => {
+  const addNote = async (note: {
+    title: string;
+    content: string;
+    tags: string[];
+    pdfUrl?: string;
+    fileName?: string;
+    fileSize?: string;
+    pdfFile?: File | Blob;
+  }) => {
     const noteId = 'n_' + Date.now();
-    const hasPdf = Boolean(note.pdfUrl);
+    const hasPdf = Boolean(note.pdfUrl || note.pdfFile);
     const userKey = currentUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    let cloudPdfUrl = note.pdfUrl;
 
+    // Upload PDF to Firebase Storage so partner can preview and download it on any device
+    if (note.pdfFile && note.fileName) {
+      try {
+        const uploaded = await uploadNotePdf(noteId, note.pdfFile, note.fileName);
+        if (uploaded) {
+          cloudPdfUrl = uploaded;
+        }
+      } catch (err) {
+        console.warn('[Firebase Note PDF Upload Error]', err);
+      }
+    }
+
+    // Also persist in local IndexedDB for fast offline preview
     if (hasPdf && note.pdfUrl) {
       savePdfToIndexedDb(noteId, {
         pdfDataUrl: note.pdfUrl,
@@ -1959,24 +2174,32 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ...note,
       id: noteId,
       hasPdf,
+      pdfUrl: cloudPdfUrl,
       owner: userKey,
+      uploadedBy: currentUser,
       createdAt: 'Just now'
     };
 
     setNotes(prev => {
       const updated = [newNote, ...prev.filter(n => n.id !== newNote.id)];
       try {
-        const cleanForStorage = updated.map(n => ({
+        // Cloud URLs are safe in localStorage; only strip heavy data URLs
+        const safeForStorage = updated.map(n => ({
           ...n,
-          pdfUrl: undefined
+          pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
         }));
-        localStorage.setItem('fusion_notes', JSON.stringify(cleanForStorage));
+        localStorage.setItem('fusion_notes', JSON.stringify(safeForStorage));
         const ownNotes = updated
           .filter(n => {
             const o = String((n as any).owner || userKey).toLowerCase();
             return o === userKey || o === currentUser.toLowerCase();
           })
-          .map(n => ({ ...n, owner: userKey, pdfUrl: undefined }));
+          .map(n => ({
+            ...n,
+            owner: userKey,
+            uploadedBy: n.uploadedBy || (userKey === 'ayush' ? 'Ayush' : 'Diwakar'),
+            pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+          }));
         cloudSync.pushStateDirect(currentUser, { notes: ownNotes }).catch(e => console.warn('[CloudSync] addNote push error', e));
       } catch (e) {
         console.warn('[Note Storage Quota Warning]', e);
@@ -1999,7 +2222,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         const cleanForStorage = updated.map(n => ({
           ...n,
-          pdfUrl: undefined
+          pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
         }));
         localStorage.setItem('fusion_notes', JSON.stringify(cleanForStorage));
         const ownNotes = updated
@@ -2007,7 +2230,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const o = String((n as any).owner || userKey).toLowerCase();
             return o === userKey || o === currentUser.toLowerCase();
           })
-          .map(n => ({ ...n, owner: userKey, pdfUrl: undefined }));
+          .map(n => ({
+            ...n,
+            owner: userKey,
+            uploadedBy: n.uploadedBy || (userKey === 'ayush' ? 'Ayush' : 'Diwakar'),
+            pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+          }));
         cloudSync.pushStateDirect(currentUser, {
           notes: ownNotes,
           deletedNoteIds: [id]
@@ -2046,7 +2274,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const updatedQs = s.questions.map(q => (q.id === questionId ? { ...q, completed, completedBy: completed ? currentUser : undefined } : q));
         if (completed) {
           confetti({ particleCount: 35, spread: 50 });
-          setProfile(p => ({ ...p, totalXp: p.totalXp + 25 }));
+          awardXp(25, 'Question Solved');
         }
         return { ...s, questions: updatedQs, completedCount: updatedQs.filter(q => q.completed).length };
       });
@@ -2192,7 +2420,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
           // Award XP and celebration
           confetti({ particleCount: 65, spread: 70 });
-          setProfile(p => ({ ...p, totalXp: p.totalXp + 35 }));
+          awardXp(35, 'Problem Screenshot Verified');
 
           // Add to study sessions telemetry
           const solvedSession: StudySession = {
@@ -2234,7 +2462,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const next = !m.completed;
           if (next) {
             confetti({ particleCount: 60, spread: 70 });
-            setProfile(p => ({ ...p, totalXp: p.totalXp + 100 }));
+            awardXp(100, 'ML Milestone Completed');
           }
           return { ...m, completed: next };
         }
@@ -2253,7 +2481,7 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const isFirstCompletion = completed && !t.xpClaimed;
           if (isFirstCompletion) {
             confetti({ particleCount: 45, spread: 60 });
-            setProfile(p => ({ ...p, totalXp: p.totalXp + t.exp }));
+            awardXp(t.exp, 'Daily Task: ' + t.title);
           }
           return {
             ...t,
@@ -3014,6 +3242,7 @@ INSTRUCTIONS:
         profile,
         updateProfile,
         updateProfileAvatar,
+        awardXp,
         activeFriend,
         setActiveFriend,
         friendStudyStatus: activeFriend.isFocusing ? `Focusing on ${activeFriend.focusSubject}` : 'In Study Room',
