@@ -9,20 +9,39 @@ import { YouTubeRecommendation, PlaylistLecture } from '../types/studentOs';
 export class YouTubeService {
   private static KEY_STORAGE_PREFIX = 'fusion_yt_api_key_';
 
-  public static getApiKey(userName: string = 'Diwakar'): string {
-    const clean = (userName || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+  public static getApiKey(userName?: string): string {
+    const effectiveUser = userName || (typeof localStorage !== 'undefined' ? localStorage.getItem('fusion_user') : null) || 'Diwakar';
+    const clean = effectiveUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    
+    // 1. User-specific key
     const userKey = localStorage.getItem(`${this.KEY_STORAGE_PREFIX}${clean}`);
     if (userKey && userKey.trim()) return userKey.trim();
-    return '';
+
+    // 2. Universal YouTube API keys
+    const commonYt = localStorage.getItem('fusion_youtube_api_key') || localStorage.getItem('youtube_api_key');
+    if (commonYt && commonYt.trim()) return commonYt.trim();
+
+    // 3. Partner key fallback
+    const partnerClean = clean === 'ayush' ? 'diwakar' : 'ayush';
+    const partnerKey = localStorage.getItem(`${this.KEY_STORAGE_PREFIX}${partnerClean}`);
+    if (partnerKey && partnerKey.trim()) return partnerKey.trim();
+
+    // 4. Environment variable fallback
+    return (import.meta as any).env?.VITE_YOUTUBE_API_KEY || '';
   }
 
   public static setApiKey(userName: string = 'Diwakar', key: string): void {
     const cleanUser = (userName || 'diwakar').toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
-    const clean = key.trim();
-    localStorage.setItem(`${this.KEY_STORAGE_PREFIX}${cleanUser}`, clean);
+    const clean = (key || '').trim().replace(/^['"]|['"]$/g, '');
+    if (clean) {
+      localStorage.setItem(`${this.KEY_STORAGE_PREFIX}${cleanUser}`, clean);
+      localStorage.setItem('fusion_youtube_api_key', clean);
+    } else {
+      localStorage.removeItem(`${this.KEY_STORAGE_PREFIX}${cleanUser}`);
+    }
   }
 
-  public static hasApiKey(userName: string = 'Diwakar'): boolean {
+  public static hasApiKey(userName?: string): boolean {
     return Boolean(this.getApiKey(userName));
   }
 
@@ -64,7 +83,7 @@ export class YouTubeService {
     courseTitle: string = '',
     apiKey?: string
   ): Promise<PlaylistLecture[]> {
-    const key = apiKey || this.getApiKey();
+    const key = (apiKey || '').trim() || this.getApiKey();
     const listId = this.extractPlaylistId(playlistUrlOrId) || (playlistUrlOrId.startsWith('PL') ? playlistUrlOrId : null);
     const directVideoId = this.extractVideoId(playlistUrlOrId) || 'EAR7De6G0ms';
 
@@ -254,7 +273,7 @@ export class YouTubeService {
     apiKey?: string,
     queryType: 'DSA' | 'ML' | 'SYSTEM_DESIGN' | 'ALL' = 'ALL'
   ): Promise<YouTubeRecommendation[]> {
-    const key = apiKey || this.getApiKey();
+    const key = (apiKey || '').trim() || this.getApiKey();
     const currentHour = new Date().getHours();
     const currentHourlyFocus = this.HOURLY_TOPICS[currentHour % this.HOURLY_TOPICS.length];
 

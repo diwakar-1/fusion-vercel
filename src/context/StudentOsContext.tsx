@@ -482,24 +482,48 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return GeminiService.getApiKey(currentUser);
   });
 
-  const setGeminiApiKey = (key: string) => {
-    const clean = key.trim().replace(/^['"]|['"]$/g, '');
-    setGeminiApiKeyState(clean);
-    GeminiService.setApiKey(currentUser, clean);
-    cloudSync.pushState(currentUser, { geminiApiKey: clean });
-  };
-
   // YouTube API Key Management
   const [youtubeApiKey, setYoutubeApiKeyState] = useState<string>(() => {
     return YouTubeService.getApiKey(currentUser);
   });
+
+  // Keep API keys in sync whenever currentUser changes (switch between Diwakar and Ayush)
+  useEffect(() => {
+    const key = GeminiService.getApiKey(currentUser);
+    const ytKey = YouTubeService.getApiKey(currentUser);
+    setGeminiApiKeyState(key);
+    setYoutubeApiKeyState(ytKey);
+  }, [currentUser]);
+
+  const setGeminiApiKey = (key: string) => {
+    const clean = key.trim().replace(/^['"]|['"]$/g, '');
+    setGeminiApiKeyState(clean);
+    GeminiService.setApiKey(currentUser, clean);
+    setProfile(prev => {
+      const next = { ...prev, geminiApiKey: clean || undefined };
+      try {
+        const userKey = currentUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+        localStorage.setItem(`fusion_profile_${userKey}`, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    cloudSync.pushStateDirect(currentUser, { geminiApiKey: clean }).catch(() => {});
+  };
 
   const setYoutubeApiKey = (key: string) => {
     const clean = key.trim().replace(/^['"]|['"]$/g, '');
     setYoutubeApiKeyState(clean);
     YouTubeService.setApiKey(currentUser, clean);
     api.setYoutubeKey(clean);
-    cloudSync.pushState(currentUser, { youtubeApiKey: clean });
+    setProfile(prev => {
+      const next = { ...prev, youtubeApiKey: clean || undefined };
+      try {
+        const userKey = currentUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+        localStorage.setItem(`fusion_profile_${userKey}`, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    cloudSync.pushStateDirect(currentUser, { youtubeApiKey: clean }).catch(() => {});
   };
 
   const [isAiThinking, setIsAiThinking] = useState<boolean>(false);
@@ -2290,8 +2314,9 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       setIsAiThinking(true);
       try {
+        const activeKey = geminiApiKey || GeminiService.getApiKey(currentUser);
         const result = await GeminiService.analyzeTimetable(
-          geminiApiKey,
+          activeKey,
           base64Data,
           mimeType,
           isTodayHoliday,
@@ -2327,8 +2352,9 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setIsAiThinking(true);
     try {
       const fallbackBase64 = timetableImageUrl?.includes(',') ? timetableImageUrl.split(',')[1] : '';
+      const activeKey = geminiApiKey || GeminiService.getApiKey(currentUser);
       const result = await GeminiService.analyzeTimetable(
-        geminiApiKey,
+        activeKey,
         fallbackBase64,
         'image/jpeg',
         isHoliday,
@@ -2371,21 +2397,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const noteId = 'n_' + Date.now();
     const hasPdf = Boolean(note.pdfUrl || note.pdfFile);
     const userKey = currentUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
-    let cloudPdfUrl = note.pdfUrl;
 
-    // Upload PDF to Firebase Storage so partner can preview and download it on any device
-    if (note.pdfFile && note.fileName) {
-      try {
-        const uploaded = await uploadNotePdf(noteId, note.pdfFile, note.fileName);
-        if (uploaded) {
-          cloudPdfUrl = uploaded;
-        }
-      } catch (err) {
-        console.warn('[Firebase Note PDF Upload Error]', err);
-      }
-    }
-
-    // Also persist in local IndexedDB for fast offline preview
+    // 1. Immediately persist in local IndexedDB for zero-latency local preview
     if (hasPdf && note.pdfUrl) {
       savePdfToIndexedDb(noteId, {
         pdfDataUrl: note.pdfUrl,
@@ -2394,11 +2407,12 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
     }
 
+    // 2. Immediately create and register the new note in local state & localStorage (never blocks UI)
     const newNote: StudentNote = {
       ...note,
       id: noteId,
       hasPdf,
-      pdfUrl: cloudPdfUrl,
+      pdfUrl: note.pdfUrl,
       owner: userKey,
       uploadedBy: currentUser,
       createdAt: 'Just now'
@@ -2443,6 +2457,44 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       content: newNote.content,
       tags: newNote.tags
     }).catch(e => console.warn('api createNote error', e));
+
+    // 3. Asynchronously upload PDF to Firebase Cloud Storage in the background (timeout bounded)
+    const fileToUpload = note.pdfFile;
+    const nameToUpload = note.fileName;
+    if (fileToUpload && nameToUpload) {
+      (async () => {
+        try {
+          const uploaded = await uploadNotePdf(noteId, fileToUpload, nameToUpload);
+          if (uploaded) {
+            setNotes(prev => {
+              const updated = prev.map(n => n.id === noteId ? { ...n, pdfUrl: uploaded } : n);
+              try {
+                const safeForStorage = updated.map(n => ({
+                  ...n,
+                  pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+                }));
+                localStorage.setItem('fusion_notes', JSON.stringify(safeForStorage));
+                const ownNotes = updated
+                  .filter(n => {
+                    const o = String((n as any).owner || userKey).toLowerCase();
+                    return o === userKey || o === currentUser.toLowerCase();
+                  })
+                  .map(n => ({
+                    ...n,
+                    owner: userKey,
+                    uploadedBy: n.uploadedBy || (userKey === 'ayush' ? 'Ayush' : 'Diwakar'),
+                    pdfUrl: n.pdfUrl?.startsWith('data:') ? undefined : n.pdfUrl
+                  }));
+                cloudSync.pushStateDirect(currentUser, { notes: ownNotes }).catch(() => {});
+              } catch {}
+              return updated;
+            });
+          }
+        } catch (err) {
+          console.warn('[Background Firebase Storage Upload Error]', err);
+        }
+      })();
+    }
   };
 
   const deleteNote = (id: string) => {
@@ -2545,7 +2597,8 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const generateCodingSheetByAi = async (topic: string) => {
     setIsAiThinking(true);
     try {
-      const generated = await GeminiService.generateCodingQuestions(geminiApiKey, topic);
+      const activeKey = geminiApiKey || GeminiService.getApiKey(currentUser);
+      const generated = await GeminiService.generateCodingQuestions(activeKey, topic);
       setPdfQuestionSheets(prev => {
         const allExistingQuestions = prev.flatMap(s => s.questions);
         const newQs: PdfQuestionItem[] = generated.map((q, i) => ({
@@ -2963,8 +3016,9 @@ INSTRUCTIONS:
         text: m.text
       }));
 
+      const activeKey = geminiApiKey || GeminiService.getApiKey(currentUser);
       const reply = await GeminiService.chatWithFuse(
-        geminiApiKey,
+        activeKey,
         history,
         text.trim(),
         systemPrompt

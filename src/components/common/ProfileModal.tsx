@@ -113,15 +113,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const [hasNativePermission, setHasNativePermission] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setUserName(profile.name);
-    setUserHandle(profile.handle);
-    setCollege(profile.college || '');
-    setBranch(profile.branch || '');
-    setSemester(profile.semester || '');
-    setPreviewAvatar(profile.avatar);
-    setTempGeminiKey(geminiApiKey || '');
-    setTempYtKey(youtubeApiKey || '');
-  }, [profile, geminiApiKey, youtubeApiKey]);
+    if (isOpen) {
+      setUserName(profile.name);
+      setUserHandle(profile.handle);
+      setCollege(profile.college || '');
+      setBranch(profile.branch || '');
+      setSemester(profile.semester || '');
+      setPreviewAvatar(profile.avatar);
+      setTempGeminiKey(geminiApiKey || '');
+      setTempYtKey(youtubeApiKey || '');
+    }
+  }, [isOpen, profile.name]);
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
@@ -136,12 +138,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose }) =
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!userName.trim()) return;
+
+    // Persist API keys entered in profile modal
+    if (tempGeminiKey.trim() !== geminiApiKey) {
+      setGeminiApiKey(tempGeminiKey.trim());
+    }
+    if (tempYtKey.trim() !== youtubeApiKey) {
+      setYoutubeApiKey(tempYtKey.trim());
+    }
+
     updateProfile({
       name: userName.trim(),
       handle: userHandle.trim().startsWith('@') ? userHandle.trim() : `@${userHandle.trim()}`,
       college: college.trim(),
       branch: branch.trim(),
-      semester: semester.trim()
+      semester: semester.trim(),
+      geminiApiKey: tempGeminiKey.trim() || undefined,
+      youtubeApiKey: tempYtKey.trim() || undefined
     });
     setIsProfileSaved(true);
     setTimeout(() => setIsProfileSaved(false), 2000);

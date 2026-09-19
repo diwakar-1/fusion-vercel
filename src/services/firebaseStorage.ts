@@ -16,6 +16,23 @@ const firebaseConfig = {
   appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '1:1075761660605:web:d105f58da153c1f4abadd4'
 };
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Storage operation timed out after ${ms}ms`));
+    }, ms);
+    promise
+      .then(res => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch(err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 function getFirebaseStorageInstance() {
   try {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -28,6 +45,7 @@ function getFirebaseStorageInstance() {
 
 /**
  * Uploads a note's PDF to Firebase Storage and returns its public HTTPS download URL.
+ * Strictly bounded by timeouts so it never hangs or freezes the UI.
  */
 export async function uploadNotePdf(
   noteId: string,
@@ -42,10 +60,20 @@ export async function uploadNotePdf(
   }
   if (!app) return null;
 
+  // Optional: attempt anonymous auth to satisfy Firebase rules that require request.auth != null
+  try {
+    const { getAuth, signInAnonymously } = await import('firebase/auth');
+    const auth = getAuth(app);
+    if (!auth.currentUser) {
+      await withTimeout(signInAnonymously(auth), 3000).catch(() => {});
+    }
+  } catch {
+    // Continue regardless if auth is disabled
+  }
+
   const buckets = [
     firebaseConfig.storageBucket,
-    'studyplanner-d0059.firebasestorage.app',
-    'studyplanner-d0059.appspot.com'
+    'studyplanner-d0059.firebasestorage.app'
   ];
 
   const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -58,12 +86,22 @@ export async function uploadNotePdf(
   };
 
   for (const bucket of Array.from(new Set(buckets))) {
+    if (!bucket) continue;
     try {
       const bucketUrl = bucket.startsWith('gs://') ? bucket : `gs://${bucket}`;
       const storage = getStorage(app, bucketUrl);
       const storageRef = ref(storage, `notes_pdfs/${noteId}_${safeFileName}`);
-      const snapshot = await uploadBytes(storageRef, fileOrBlob, metadata);
-      const downloadUrl = await getDownloadURL(snapshot.ref);
+      
+      const snapshot = await withTimeout(
+        uploadBytes(storageRef, fileOrBlob, metadata),
+        8000 // 8-second max timeout per bucket
+      );
+      
+      const downloadUrl = await withTimeout(
+        getDownloadURL(snapshot.ref),
+        4000 // 4-second max timeout for URL
+      );
+      
       if (downloadUrl) return downloadUrl;
     } catch (err) {
       console.warn(`[Firebase Storage upload attempt failed for ${bucket}]`, err);

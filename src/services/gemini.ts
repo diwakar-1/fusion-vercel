@@ -15,18 +15,35 @@ export class GeminiService {
     return `fusion_gemini_api_key_${clean}`;
   }
 
-  public static getApiKey(userName: string = 'Diwakar'): string {
-    const userKey = localStorage.getItem(this.getStorageKey(userName));
+  public static getApiKey(userName?: string): string {
+    const effectiveUser = userName || (typeof localStorage !== 'undefined' ? localStorage.getItem('fusion_user') : null) || 'Diwakar';
+    const clean = effectiveUser.toLowerCase().includes('ayush') ? 'ayush' : 'diwakar';
+    
+    // 1. Check user-specific key
+    const userKey = localStorage.getItem(this.getStorageKey(clean));
     if (userKey && userKey.trim()) return userKey.trim();
-    return '';
+
+    // 2. Check universal/general Gemini keys
+    const commonKey = localStorage.getItem('fusion_gemini_api_key') || localStorage.getItem('gemini_api_key');
+    if (commonKey && commonKey.trim()) return commonKey.trim();
+
+    // 3. Fallback to partner key (ensures FUSE is never blocked for either user)
+    const partnerClean = clean === 'ayush' ? 'diwakar' : 'ayush';
+    const partnerKey = localStorage.getItem(this.getStorageKey(partnerClean));
+    if (partnerKey && partnerKey.trim()) return partnerKey.trim();
+
+    // 4. Environment variable fallback
+    return (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
   }
 
-  public static setApiKey(userName: string, key: string): void {
+  public static setApiKey(userName: string = 'Diwakar', key: string): void {
     const cleanKey = (key || '').trim().replace(/^['"]|['"]$/g, '');
+    const storageKey = this.getStorageKey(userName);
     if (cleanKey) {
-      localStorage.setItem(this.getStorageKey(userName), cleanKey);
+      localStorage.setItem(storageKey, cleanKey);
+      localStorage.setItem('fusion_gemini_api_key', cleanKey);
     } else {
-      localStorage.removeItem(this.getStorageKey(userName));
+      localStorage.removeItem(storageKey);
     }
   }
 
@@ -119,9 +136,12 @@ IMPORTANT OUTPUT FORMATTING RULES:
   ): Promise<string> {
     const fullSystemPrompt = (systemInstruction ? systemInstruction + '\n\n' : '') + this.getBaseSystemInstruction();
 
-    const cleanKey = (apiKey || '').trim().replace(/^['"]|['"]$/g, '');
+    let cleanKey = (apiKey || '').trim().replace(/^['"]|['"]$/g, '');
+    if (!cleanKey) {
+      cleanKey = this.getApiKey();
+    }
 
-    // If no API key provided, try local Ollama right away
+    // If still no API key, try local Ollama
     if (!cleanKey) {
       const ollamaOk = await this.isOllamaAvailable();
       if (ollamaOk) {
@@ -167,7 +187,7 @@ IMPORTANT OUTPUT FORMATTING RULES:
       }
     };
 
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
     let lastError: any = null;
 
     for (const model of models) {
@@ -260,9 +280,10 @@ Strictly return ONLY a valid JSON array matching this TypeScript interface witho
   }
 ]`;
 
-    if (apiKey) {
+    const effectiveKey = (apiKey || '').trim() || this.getApiKey();
+    if (effectiveKey) {
       try {
-        const reply = await this.chatWithFuse(apiKey, [], prompt, 'Output ONLY a valid JSON array of lectures.');
+        const reply = await this.chatWithFuse(effectiveKey, [], prompt, 'Output ONLY a valid JSON array of lectures.');
         const jsonMatch = reply.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
@@ -364,7 +385,9 @@ Strictly return ONLY a valid JSON object matching this TypeScript interface with
   ]
 }`;
 
-    if (!apiKey) {
+    const effectiveKey = (apiKey || '').trim() || this.getApiKey();
+
+    if (!effectiveKey) {
       const defaultCollegeHours = isHoliday ? 'Holiday — No College' : (manualWorkingHours || '09:00 AM - 04:00 PM');
       return {
         collegeHours: defaultCollegeHours,
@@ -389,7 +412,7 @@ Strictly return ONLY a valid JSON object matching this TypeScript interface with
 
     try {
       const reply = await this.chatWithFuse(
-        apiKey,
+        effectiveKey,
         [],
         prompt,
         'You are an expert academic scheduler. Output ONLY pure valid JSON.',
@@ -429,7 +452,9 @@ Return ONLY a valid JSON array matching:
   { "title": "Question Name", "platform": "LeetCode", "difficulty": "Medium" }
 ]`;
 
-    if (!apiKey) {
+    const effectiveKey = (apiKey || '').trim() || this.getApiKey();
+
+    if (!effectiveKey) {
       return [
         { title: 'Two Sum & 3Sum Extensions', platform: 'LeetCode', difficulty: 'Easy' },
         { title: 'Container With Most Water', platform: 'LeetCode', difficulty: 'Medium' },
@@ -444,7 +469,7 @@ Return ONLY a valid JSON array matching:
 
     try {
       const reply = await this.chatWithFuse(
-        apiKey,
+        effectiveKey,
         [],
         prompt,
         'You are an expert algorithm mentor. Output ONLY pure valid JSON array.'
@@ -500,10 +525,12 @@ Strictly return ONLY a valid JSON object matching this schema without markdown c
   "summary": "1-sentence summary of the problem"
 }`;
 
-    if (apiKey && imageBase64) {
+    const effectiveKey = (apiKey || '').trim() || this.getApiKey();
+
+    if (effectiveKey && imageBase64) {
       try {
         const reply = await this.chatWithFuse(
-          apiKey,
+          effectiveKey,
           [],
           prompt,
           'You are FUSE Vision AI. Return ONLY a single valid JSON object.',

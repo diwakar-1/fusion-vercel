@@ -97,6 +97,10 @@ export const NotesKnowledgeBase: React.FC = () => {
       : `${(file.size / 1024).toFixed(1)} KB`;
 
     const reader = new FileReader();
+    reader.onerror = (err) => {
+      console.error('[Note PDF File Read Error]', err);
+      setIsUploadingPdf(false);
+    };
     reader.onload = async (event) => {
       const dataUrl = event.target?.result as string;
       try {
@@ -117,7 +121,12 @@ export const NotesKnowledgeBase: React.FC = () => {
       setActiveTab('notes');
       setSelectedSubject('All');
     };
-    reader.readAsDataURL(file);
+    try {
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('[FileReader Init Error]', err);
+      setIsUploadingPdf(false);
+    }
     e.target.value = '';
   };
 
