@@ -159,10 +159,17 @@ export const NotesKnowledgeBase: React.FC = () => {
     if (file) {
       setScreenshotFile(file);
       const reader = new FileReader();
+      reader.onerror = (err) => {
+        console.error('[Screenshot File Read Error]', err);
+      };
       reader.onload = () => {
         setScreenshotPreview(reader.result as string);
       };
-      reader.readAsDataURL(file);
+      try {
+        reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('[Screenshot Reader Init Error]', err);
+      }
     }
   };
 

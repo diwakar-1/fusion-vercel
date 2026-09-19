@@ -2638,6 +2638,11 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setIsAiThinking(true);
     return new Promise((resolve) => {
       const reader = new FileReader();
+      reader.onerror = (err) => {
+        console.error('[Screenshot File Read Error]', err);
+        setIsAiThinking(false);
+        resolve({ success: false, questionTitle: manualTitle || 'Problem' });
+      };
       reader.onload = async () => {
         try {
           const dataUrl = reader.result as string;
@@ -2645,8 +2650,9 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           const mimeType = file.type || 'image/png';
 
           // 1. Run Gemini AI Vision Analysis on raw image
+          const activeKey = geminiApiKey || GeminiService.getApiKey(currentUser);
           const analysis = await GeminiService.analyzeQuestionScreenshot(
-            geminiApiKey,
+            activeKey,
             base64Data,
             mimeType,
             manualTitle
@@ -2760,7 +2766,13 @@ export const StudentOsProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           setIsAiThinking(false);
         }
       };
-      reader.readAsDataURL(file);
+      try {
+        reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('[FileReader Init Error]', err);
+        setIsAiThinking(false);
+        resolve({ success: false, questionTitle: manualTitle || 'Problem' });
+      }
     });
   };
 
