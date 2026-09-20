@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Code2,
   ExternalLink,
-  Github,
+  GitFork,
   Loader2,
   RefreshCw,
   Search,
@@ -195,7 +195,7 @@ export const LeetCodeHub: React.FC = () => {
               fontSize: '0.85rem'
             }}
           >
-            <Github size={16} />
+            <GitFork size={16} />
             Open GitHub
             <ExternalLink size={14} />
           </a>
@@ -263,7 +263,7 @@ export const LeetCodeHub: React.FC = () => {
       {isOwnTab && (
         <GlassCard style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <Github size={18} color="#334155" />
+            <GitFork size={18} color="#334155" />
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Your LeetHub GitHub repo</h3>
           </div>
           <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
