@@ -45,6 +45,7 @@ export interface SyncPayload {
   mlMilestones?: any[];     // Machine Learning Milestones synced
   geminiApiKey?: string;    // API keys synced so Android keys appear on Web
   youtubeApiKey?: string;
+  leetcodeRepo?: string; // GitHub owner/repo for LeetHub solutions (per user)
   aiChatMessages?: any[];   // Private FUSE AI chat history per user
   activeTimerState?: any;
   studyLogs?: any[];

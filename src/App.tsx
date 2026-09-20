@@ -11,6 +11,7 @@ import { StudyTracker } from './components/features/StudyTracker';
 import { CoursePlaylists } from './components/features/CoursePlaylists';
 import { CollegeTimetable } from './components/features/CollegeTimetable';
 import { DsaTracker } from './components/features/DsaTracker';
+import { LeetCodeHub } from './components/features/LeetCodeHub';
 import { MlRoadmap } from './components/features/MlRoadmap';
 import { NotesKnowledgeBase } from './components/features/NotesKnowledgeBase';
 import { HabitsAndGoals } from './components/features/HabitsAndGoals';
@@ -44,6 +45,8 @@ const StudentOsApp: React.FC = () => {
         return <CollegeTimetable />;
       case 'dsa':
         return <DsaTracker />;
+      case 'leetcode':
+        return <LeetCodeHub />;
       case 'ml':
         return <MlRoadmap />;
       case 'notes':
