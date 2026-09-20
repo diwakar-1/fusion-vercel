@@ -23,7 +23,6 @@ export const GlassDock: React.FC = () => {
     { id: 'study', label: 'Study Timer', icon: Timer, gif: '/icons/STUDY TIMER.gif' },
     { id: 'courses', label: 'Playlists', icon: Film, gif: '/icons/PLAYLIST.gif' },
     { id: 'dsa', label: 'DSA Engine', icon: Code2, gif: '/icons/DSA ENGINE.gif' },
-    { id: 'leetcode', label: 'LeetCode Hub', icon: Code2, gif: '/icons/DSA ENGINE.gif' },
     { id: 'timetable', label: 'Timetable', icon: CalendarDays, gif: '/icons/TIME TABLE.gif' },
     { id: 'notes', label: 'Notes & Sheets', icon: BookOpen, gif: '/icons/NOTES.gif' },
     { id: 'ml', label: 'AIML Hub', icon: BrainCircuit, gif: '/icons/AIML HUB.gif' },

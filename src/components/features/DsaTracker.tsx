@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useStudentOs } from '../../context/StudentOsContext';
 import { GlassCard } from '../common/GlassCard';
 import { DsaSession } from '../../types/studentOs';
+import { LeetCodeHub } from './LeetCodeHub';
 import { Code2, Plus, Clock, Sparkles, CheckCircle2, BookOpen, Layers, Flame, Play } from 'lucide-react';
 
 const POPULAR_PATTERNS = [
@@ -20,6 +21,7 @@ const POPULAR_PATTERNS = [
 export const DsaTracker: React.FC = () => {
   const { dsaSessions, logDsaSession, profile, activeFriend, setActiveModule } = useStudentOs();
 
+  const [dsaTab, setDsaTab] = useState<'sessions' | 'leetcode'>('leetcode');
   const [showLogModal, setShowLogModal] = useState(false);
   const [topic, setTopic] = useState('Dynamic Programming');
   const [platform, setPlatform] = useState<any>('LeetCode');
@@ -88,12 +90,14 @@ export const DsaTracker: React.FC = () => {
               className="font-tech"
               style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}
             >
-              DSA Study Session Tracker
+              DSA Engine
             </h2>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 12 }}>
+          {dsaTab === 'sessions' && (
+            <>
           <button
             onClick={() => setActiveModule('study')}
             className="glass-pill"
@@ -119,9 +123,50 @@ export const DsaTracker: React.FC = () => {
             <Plus size={16} />
             <span>Log Study Session</span>
           </button>
+            </>
+          )}
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => setDsaTab('leetcode')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: 'var(--radius-pill)',
+            border: dsaTab === 'leetcode' ? '1.5px solid rgba(234,88,12,0.4)' : '1.5px solid rgba(0,0,0,0.08)',
+            background: dsaTab === 'leetcode' ? 'rgba(234,88,12,0.12)' : '#fff',
+            color: dsaTab === 'leetcode' ? '#C2410C' : 'var(--text-secondary)',
+            fontWeight: 800,
+            cursor: 'pointer',
+            fontSize: '0.88rem'
+          }}
+        >
+          LeetHub Solutions
+        </button>
+        <button
+          type="button"
+          onClick={() => setDsaTab('sessions')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: 'var(--radius-pill)',
+            border: dsaTab === 'sessions' ? '1.5px solid rgba(79,70,229,0.4)' : '1.5px solid rgba(0,0,0,0.08)',
+            background: dsaTab === 'sessions' ? 'rgba(79,70,229,0.12)' : '#fff',
+            color: dsaTab === 'sessions' ? '#4F46E5' : 'var(--text-secondary)',
+            fontWeight: 800,
+            cursor: 'pointer',
+            fontSize: '0.88rem'
+          }}
+        >
+          Study Sessions
+        </button>
+      </div>
+
+      {dsaTab === 'leetcode' && <LeetCodeHub />}
+
+      {dsaTab === 'sessions' && (
+      <>
       {/* 4 Telemetry Metrics Cards */}
       <div className="responsive-grid-stats">
         <GlassCard style={{ padding: '20px' }}>
@@ -512,6 +557,8 @@ export const DsaTracker: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );
